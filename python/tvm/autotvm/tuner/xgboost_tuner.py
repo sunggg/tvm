@@ -19,6 +19,7 @@
 from .model_based_tuner import ModelBasedTuner, ModelOptimizer
 from .xgboost_cost_model import XGBoostCostModel
 from .sa_model_optimizer import SimulatedAnnealingOptimizer
+from .srtuner_model_optimizer import SRTunerOptimizer
 
 
 class XGBTuner(ModelBasedTuner):
@@ -77,9 +78,10 @@ class XGBTuner(ModelBasedTuner):
         feature_type="itervar",
         loss_type="rank",
         num_threads=None,
-        optimizer="sa",
+        optimizer_name="sa",
         diversity_filter_ratio=None,
         log_interval=50,
+        default_perf = None
     ):
         cost_model = XGBoostCostModel(
             task,
@@ -88,15 +90,17 @@ class XGBTuner(ModelBasedTuner):
             num_threads=num_threads,
             log_interval=log_interval // 2,
         )
-        if optimizer == "sa":
+        if optimizer_name == "sa":
             optimizer = SimulatedAnnealingOptimizer(task, log_interval=log_interval)
+        elif optimizer_name == "SRTuner":
+            optimizer = SRTunerOptimizer(task, persistent=True, early_stop=50, log_interval=log_interval)
         else:
             assert isinstance(optimizer, ModelOptimizer), (
                 "Optimizer must be " "a supported name string" "or a ModelOptimizer object."
             )
 
         super(XGBTuner, self).__init__(
-            task, cost_model, optimizer, plan_size, diversity_filter_ratio
+            task, cost_model, optimizer_name, optimizer, plan_size, diversity_filter_ratio, default_perf
         )
 
     def tune(self, *args, **kwargs):  # pylint: disable=arguments-differ

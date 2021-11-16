@@ -877,6 +877,19 @@ class ConfigSpace(object):
         for i, (name, space) in enumerate(self.space_map.items()):
             res += "  %2d %s: %s\n" % (i, name, space)
         return res + ")"
+    
+    def __copy__(self, cfg):
+         import copy
+         self.space_map    = copy.deepcopy(cfg.space_map)    # name -> space
+         self._collect     = copy.deepcopy(cfg._collect)
+         self._length      = copy.deepcopy(cfg._length)
+         self._entity_map  = copy.deepcopy(cfg._entity_map)  # name -> entity
+         self._constraints = copy.deepcopy(cfg._constraints)
+         self.errors       = copy.deepcopy(cfg.errors)
+         self.code_hash    = copy.deepcopy(cfg.code_hash)
+         self.flop         = copy.deepcopy(cfg.flop)
+         self.cost         = copy.deepcopy(cfg.cost)
+         self.is_fallback  = copy.deepcopy(cfg.is_fallback)
 
 
 _ann_to_number = {
@@ -1116,6 +1129,32 @@ class FallbackConfigEntity(ConfigSpace):
         for knob_name in self.space_map.keys():
             if not isinstance(self.space_map[knob_name], SplitSpace):
                 self._entity_map[knob_name] = best_match_cfg[knob_name]
+
+    def to_json_dict(self):
+        """convert to a json serializable dictionary
+
+        Return
+        ------
+        json_dict: dict
+            a json serializable dictionary
+        """
+        ret = {}
+        ret['index'] = -1
+        ret['code_hash'] = self.code_hash
+        entity_map = []
+        for k, v in self._entity_map.items():
+            if isinstance(v, SplitEntity):
+                entity_map.append((k, 'sp', v.size))
+            elif isinstance(v, ReorderEntity):
+                entity_map.append((k, 're', v.perm))
+            elif isinstance(v, AnnotateEntity):
+                entity_map.append((k, 'an', v.anns))
+            elif isinstance(v, OtherOptionEntity):
+                entity_map.append((k, 'ot', v.val))
+            else:
+                raise RuntimeError("Invalid entity instance: " + v)
+        ret['entity'] = entity_map
+        return ret
 
     def __setitem__(self, name, entity):
         """set the entity(knob) of by name

@@ -123,6 +123,8 @@ class Tuner(object):
         GLOBAL_SCOPE.in_tuning = True
         i = error_ct = 0
         errors = []
+
+        best_res = float('inf')
         while i < n_trial:
             if not self.has_next():
                 break
@@ -137,6 +139,7 @@ class Tuner(object):
                 config = inp.config
                 if res.error_no == 0:
                     flops = inp.task.flop / np.mean(res.costs)
+                    best_res = min(best_res, np.mean(res.costs))
                     error_ct = 0
                 else:
                     flops = 0
@@ -193,6 +196,7 @@ class Tuner(object):
             )
         GLOBAL_SCOPE.in_tuning = False
         del measure_batch
+        return best_res
 
     def reset(self):
         """reset the status of tuner"""

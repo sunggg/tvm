@@ -26,6 +26,7 @@ import numpy as np
 from .tuner import Tuner
 from ..env import GLOBAL_SCOPE
 
+from SRTuner import SRTunerModule, FlagInfo
 
 class FeatureCache(object):
     """Feature cache manager for cache sharing between different cost models"""
@@ -200,7 +201,7 @@ class ModelBasedTuner(Tuner):
         and then pick plan_size of them according to the diversity metric.
     """
 
-    def __init__(self, task, cost_model, model_optimizer, plan_size, diversity_filter_ratio=None):
+    def __init__(self, task, cost_model, optimizer_name, model_optimizer, plan_size, diversity_filter_ratio=None, default_perf = None):
         super(ModelBasedTuner, self).__init__(task)
 
         # space
@@ -212,6 +213,7 @@ class ModelBasedTuner(Tuner):
         self.dims = [len(x) for x in self.space.space_map.values()]
 
         self.cost_model = cost_model
+        self.optimizer_name = optimizer_name
         self.model_optimizer = model_optimizer
         self.diversity_filter_ratio = diversity_filter_ratio
 
@@ -231,31 +233,79 @@ class ModelBasedTuner(Tuner):
         self.flops_max = 0.0
         self.train_ct = 0
 
+
+        self.config_space = self.task.config_space.space_map
+        self.config_space_keys = list(self.config_space.keys())
+        self.config_space_values = list(self.config_space.values())
+        self.numFlags = len(self.config_space_values)
+
+        # define search space
+        class TVMFlagInfo(FlagInfo):
+            def __init__(self, name, configs, raw_configs):
+                super().__init__(name, configs)
+                self.raw_configs = raw_configs
+
+        self.posMap = dict()
+        search_space = dict()
+        pos = 1
+        for i in range(self.numFlags):
+            key = self.config_space_keys[i]
+            configs = self.config_space_values[i]
+            numConfigs = len(self.config_space_values[i])
+            self.posMap[key] = pos
+            pos *= numConfigs
+            search_space[key] = TVMFlagInfo(key, [j for j in range(numConfigs)], configs)
+            
+        self.mod = SRTunerModule(search_space, default_perf = default_perf)
+
+
+    def getIndex(self, opt_setting):
+        index = 0
+        assert(len(opt_setting) == self.mod.num_optimizations)
+        for opt_name, config in opt_setting.items():
+            index += config * self.posMap[opt_name]
+        return index
+
+
     def next_batch(self, batch_size):
         ret = []
 
-        counter = 0
-        while counter < batch_size:
-            if len(self.visited) >= len(self.space):
-                break
+        if self.optimizer_name == "SRTuner":
+            if len(self.trials) == 0:
+                self.tryouts = self.mod.generate_candidates(batch_size)
+                self.trial_pt += len(self.tryouts)
+                #print(self.tryout)
 
-            while self.trial_pt < len(self.trials):
-                index = self.trials[self.trial_pt]
-                if index not in self.visited:
+                for tryout in self.tryouts:
+                    index = self.getIndex(tryout)
+                    ret.append(self.space.get(index))
+                    self.visited.add(index)
+            else:
+                assert 0
+                
+        else:
+            counter = 0
+            while counter < batch_size:
+                if len(self.visited) >= len(self.space):
                     break
-                self.trial_pt += 1
 
-            if self.trial_pt >= len(self.trials) - int(0.05 * self.plan_size):
-                # if the trial list is empty or
-                # the tuner is doing the last 5% trials (e-greedy), choose randomly
-                index = np.random.randint(len(self.space))
-                while index in self.visited:
+                while self.trial_pt < len(self.trials):
+                    index = self.trials[self.trial_pt]
+                    if index not in self.visited:
+                        break
+                    self.trial_pt += 1
+
+                if self.trial_pt >= len(self.trials) - int(0.05 * self.plan_size):
+                    # if the trial list is empty or
+                    # the tuner is doing the last 5% trials (e-greedy), choose randomly
                     index = np.random.randint(len(self.space))
+                    while index in self.visited:
+                        index = np.random.randint(len(self.space))
 
-            ret.append(self.space.get(index))
-            self.visited.add(index)
+                ret.append(self.space.get(index))
+                self.visited.add(index)
 
-            counter += 1
+                counter += 1
         return ret
 
     def update(self, inputs, results):
