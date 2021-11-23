@@ -51,6 +51,7 @@ class SimulatedAnnealingOptimizer(ModelOptimizer):
 
     def __init__(
         self,
+        optimizer_name,
         task,
         n_iter=500,
         temp=(1, 0),
@@ -59,7 +60,7 @@ class SimulatedAnnealingOptimizer(ModelOptimizer):
         early_stop=50,
         log_interval=50,
     ):
-        super(SimulatedAnnealingOptimizer, self).__init__()
+        super(SimulatedAnnealingOptimizer, self).__init__(optimizer_name)
 
         self.task = task
         self.dims = [len(x) for x in self.task.config_space.space_map.values()]

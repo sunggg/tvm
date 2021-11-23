@@ -81,7 +81,7 @@ class XGBTuner(ModelBasedTuner):
         optimizer_name="sa",
         diversity_filter_ratio=None,
         log_interval=50,
-        default_perf = None
+        default_perf = float('inf')
     ):
         cost_model = XGBoostCostModel(
             task,
@@ -91,16 +91,22 @@ class XGBTuner(ModelBasedTuner):
             log_interval=log_interval // 2,
         )
         if optimizer_name == "sa":
-            optimizer = SimulatedAnnealingOptimizer(task, log_interval=log_interval)
+            optimizer = SimulatedAnnealingOptimizer(optimizer_name, task, log_interval=log_interval)
         elif optimizer_name == "SRTuner":
-            optimizer = SRTunerOptimizer(task, persistent=True, early_stop=50, log_interval=log_interval)
+            optimizer = SRTunerOptimizer(optimizer_name, 
+                task, 
+                persistent=False, 
+                early_stop=50, 
+                log_interval=log_interval, 
+                default_perf=default_perf
+            )
         else:
             assert isinstance(optimizer, ModelOptimizer), (
                 "Optimizer must be " "a supported name string" "or a ModelOptimizer object."
             )
 
         super(XGBTuner, self).__init__(
-            task, cost_model, optimizer_name, optimizer, plan_size, diversity_filter_ratio, default_perf
+            task, cost_model, optimizer, plan_size, diversity_filter_ratio
         )
 
     def tune(self, *args, **kwargs):  # pylint: disable=arguments-differ

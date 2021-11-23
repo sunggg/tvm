@@ -115,6 +115,8 @@ class Tuner(object):
         self.n_trial = n_trial
         self.early_stopping = early_stopping
 
+        self.remap_freq = int(self.n_trial/n_parallel*0.1)*n_parallel
+
         # Validate si_prefix arg
         format_si_prefix(0, si_prefix)
 

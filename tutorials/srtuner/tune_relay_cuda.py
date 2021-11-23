@@ -134,7 +134,7 @@ dtype = "float32"
 tuning_option = {
     "log_filename": log_file,
     "tuner": "xgb-srtuner",
-    "n_trial": 100,
+    "n_trial": 1000,
     "early_stopping": None,
     "measure_option": autotvm.measure_option(
         builder=autotvm.LocalBuilder(timeout=10),
@@ -182,13 +182,13 @@ def tune_tasks(
         prefix = "[Task %2d/%2d] " % (i + 1, len(tasks))
 
         default_perf = DefaultRunner(tsk).tune(
-            n_trial=1, 
+            n_trial=1,
             early_stopping=early_stopping,
             measure_option=measure_option,
             callbacks=[ ]
         )
 
-        print(f"default perf: {default_perf}")
+        #print(f"default perf: {default_perf}")
 
         # create tuner
         if tuner == "xgb" or tuner == "xgb-rank":
@@ -200,10 +200,11 @@ def tune_tasks(
         elif tuner == "gridsearch":
             tuner_obj = GridSearchTuner(tsk)
         elif tuner == 'xgb-srtuner':
-            tuner_obj = XGBTuner(tsk, 
-                loss_type="rank", 
+            measure_option["builder"].n_parallel = 10
+            tuner_obj = XGBTuner(tsk,
+                loss_type="rank",
                 optimizer_name="SRTuner",
-                #default_perf=default_perf
+                default_perf=default_perf
             )
         else:
             raise ValueError("Invalid tuner: " + tuner)
@@ -224,7 +225,6 @@ def tune_tasks(
             ],
         )
 
-        assert 0
 
     # pick best records to a cache file
     autotvm.record.pick_best(tmp_log_file, log_filename)
@@ -234,6 +234,23 @@ def tune_tasks(
 ########################################################################
 # Finally, we launch tuning jobs and evaluate the end-to-end performance.
 
+def baseline_evaluate():
+    mod, params, input_shape, out_shape = get_network(network, batch_size=1)
+    with tvm.transform.PassContext(opt_level=3):
+        lib = relay.build_module.build(mod, target=target, params=params)
+
+    # load parameters
+    dev = tvm.device(str(target), 0)
+    module = runtime.GraphModule(lib["default"](dev))
+    data_tvm = tvm.nd.array((np.random.uniform(size=input_shape)).astype(dtype))
+    module.set_input("data", data_tvm)
+
+    # evaluate
+    ftimer = module.module.time_evaluator("run", dev, number=5, repeat=20)
+    prof_res = np.array(ftimer().results) * 1000  # convert to millisecond
+
+    return np.mean(prof_res), np.std(prof_res)
+       
 
 def tune_and_evaluate(tuning_opt):
     # extract workloads from relay program
@@ -249,7 +266,6 @@ def tune_and_evaluate(tuning_opt):
 
     # compile kernels with history best records
     with autotvm.apply_history_best(log_file):
-        print("Compile...")
         with tvm.transform.PassContext(opt_level=3):
             lib = relay.build_module.build(mod, target=target, params=params)
 
@@ -260,19 +276,20 @@ def tune_and_evaluate(tuning_opt):
         module.set_input("data", data_tvm)
 
         # evaluate
-        print("Evaluate inference time cost...")
-        ftimer = module.module.time_evaluator("run", dev, number=1, repeat=600)
+       
+        ftimer = module.module.time_evaluator("run", dev, number=5, repeat=20)
         prof_res = np.array(ftimer().results) * 1000  # convert to millisecond
-        print(
-            "Mean inference time (std dev): %.2f ms (%.2f ms)"
-            % (np.mean(prof_res), np.std(prof_res))
-        )
+
+        return np.mean(prof_res), np.std(prof_res)
+       
 
 
 # We do not run the tuning in our webpage server since it takes too long.
 # Uncomment the following line to run it by yourself.
-
-tune_and_evaluate(tuning_option)
+base_perf, _  = baseline_evaluate()
+tuned_perf, _ = tune_and_evaluate(tuning_option)
+speedup = base_perf/tuned_perf
+print(f"Tuning {network} w/ {tuning_option['tuner']}: {base_perf:.3f}/{tuned_perf:.3f}={speedup:.3f}")
 
 ######################################################################
 # Sample Output

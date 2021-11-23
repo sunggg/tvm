@@ -26,7 +26,7 @@ import numpy as np
 from .tuner import Tuner
 from ..env import GLOBAL_SCOPE
 
-from SRTuner import SRTunerModule, FlagInfo
+FLOAT_MAX = float('inf')
 
 class FeatureCache(object):
     """Feature cache manager for cache sharing between different cost models"""
@@ -159,8 +159,8 @@ class CostModel(object):
 class ModelOptimizer(object):
     """Optimizer used to find optimal points of cost model"""
 
-    def __init__(self):
-        pass
+    def __init__(self, name):
+        self.name = name
 
     def find_maximums(self, model, num, exclusive):
         """Find maximum of a cost model
@@ -201,7 +201,7 @@ class ModelBasedTuner(Tuner):
         and then pick plan_size of them according to the diversity metric.
     """
 
-    def __init__(self, task, cost_model, optimizer_name, model_optimizer, plan_size, diversity_filter_ratio=None, default_perf = None):
+    def __init__(self, task, cost_model, model_optimizer, plan_size, diversity_filter_ratio=None):
         super(ModelBasedTuner, self).__init__(task)
 
         # space
@@ -213,7 +213,6 @@ class ModelBasedTuner(Tuner):
         self.dims = [len(x) for x in self.space.space_map.values()]
 
         self.cost_model = cost_model
-        self.optimizer_name = optimizer_name
         self.model_optimizer = model_optimizer
         self.diversity_filter_ratio = diversity_filter_ratio
 
@@ -233,55 +232,44 @@ class ModelBasedTuner(Tuner):
         self.flops_max = 0.0
         self.train_ct = 0
 
-
-        self.config_space = self.task.config_space.space_map
-        self.config_space_keys = list(self.config_space.keys())
-        self.config_space_values = list(self.config_space.values())
-        self.numFlags = len(self.config_space_values)
-
-        # define search space
-        class TVMFlagInfo(FlagInfo):
-            def __init__(self, name, configs, raw_configs):
-                super().__init__(name, configs)
-                self.raw_configs = raw_configs
-
-        self.posMap = dict()
-        search_space = dict()
-        pos = 1
-        for i in range(self.numFlags):
-            key = self.config_space_keys[i]
-            configs = self.config_space_values[i]
-            numConfigs = len(self.config_space_values[i])
-            self.posMap[key] = pos
-            pos *= numConfigs
-            search_space[key] = TVMFlagInfo(key, [j for j in range(numConfigs)], configs)
-            
-        self.mod = SRTunerModule(search_space, default_perf = default_perf)
-
-
-    def getIndex(self, opt_setting):
-        index = 0
-        assert(len(opt_setting) == self.mod.num_optimizations)
-        for opt_name, config in opt_setting.items():
-            index += config * self.posMap[opt_name]
-        return index
-
+        self.remap_freq = None
 
     def next_batch(self, batch_size):
         ret = []
-
-        if self.optimizer_name == "SRTuner":
+        if self.model_optimizer.name == "SRTuner":
             if len(self.trials) == 0:
-                self.tryouts = self.mod.generate_candidates(batch_size)
+                self.tryouts = self.model_optimizer.SRTunerMod.generate_candidates(batch_size)
                 self.trial_pt += len(self.tryouts)
-                #print(self.tryout)
-
+                
                 for tryout in self.tryouts:
-                    index = self.getIndex(tryout)
+                    index = self.model_optimizer.getIndex(tryout)
                     ret.append(self.space.get(index))
                     self.visited.add(index)
             else:
-                assert 0
+                counter = 0
+                opt_settings = []
+                while (counter < batch_size):
+                    if len(self.visited) >= len(self.space):
+                        break
+
+                    while self.trial_pt < len(self.trials):
+                        index = self.trials[self.trial_pt]
+                        if index not in self.visited:
+                            break
+                        self.trial_pt += 1
+
+                    if self.trial_pt == len(self.trials):
+                        index = np.random.randint(len(self.space))
+                        while index in self.visited:
+                            index = np.random.randint(len(self.space))
+
+                    tvm_opt_setting = self.space.get(index)
+                    ret.append(tvm_opt_setting)
+                    self.visited.add(index)
+                    counter += 1
+                    opt_settings.append(self.model_optimizer.get_opt_setting(tvm_opt_setting))
+
+                self.model_optimizer.SRTunerMod.expand(opt_settings)
                 
         else:
             counter = 0
@@ -309,22 +297,29 @@ class ModelBasedTuner(Tuner):
         return ret
 
     def update(self, inputs, results):
+        perfs = []
         for inp, res in zip(inputs, results):
             index = inp.config.index
             if res.error_no == 0:
                 self.xs.append(index)
-                flops = inp.task.flop / np.mean(res.costs)
+                mean_cost = np.mean(res.costs)
+                flops = inp.task.flop / mean_cost
+                perfs.append(mean_cost)
                 self.flops_max = max(self.flops_max, flops)
                 self.ys.append(flops)
             else:
                 self.xs.append(index)
                 self.ys.append(0.0)
+                perfs.append(FLOAT_MAX)
             # Usually the update function is called during the tune loop
             # after the index is already added to the visited set.
             # However, adding the index to visited again here enables us
             # to also use this update function to resume tuning progress in
             # case of interruption.
             self.visited.add(index)
+
+        if self.model_optimizer.name == "SRTuner":
+            self.model_optimizer.SRTunerMod.reflect_feedback(perfs, remap_freq = self.remap_freq)
 
         # if we have enough new training samples
         if len(self.xs) >= self.plan_size * (self.train_ct + 1) and self.flops_max > 1e-6:
@@ -345,6 +340,7 @@ class ModelBasedTuner(Tuner):
             self.trials = maximums
             self.trial_pt = 0
             self.train_ct += 1
+
 
     def load_history(self, data_set, min_seed_records=500):
         # set in_tuning as True to make the feature extraction consistent
