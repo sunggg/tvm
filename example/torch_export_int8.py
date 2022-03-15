@@ -16,6 +16,8 @@ import torch.nn.quantized.dynamic as nnqd
 import torch.nn.qat as nnqat
 import torch.nn.qat.dynamic as nnqatd
 
+from tvm.meta_schedule.integration import extract_task_from_relay
+
 # Select model
 model_name = "bert-base-uncased"
 
@@ -65,6 +67,11 @@ mod, params = relay.frontend.from_pytorch(script_module, shape_tuple)
 
 print(mod)
 print(f"Target: {target}, Device: {dev}")
+extracted_tasks = extract_task_from_relay(mod, target)
+for i, tsk in enumerate(extracted_tasks):
+    print(f"[{i}] {tsk.task_name}, {tsk.mod}")
+
+"""
 with tvm.transform.PassContext(opt_level=3):
     lib = relay.build(mod, target=target, params=params)
 
@@ -74,3 +81,4 @@ rt_mod.set_input("attention_mask", data2)
 rt_mod.set_input("token_type_ids", data3)
 
 print(rt_mod.benchmark(dev, number=1, repeat=20))
+"""
