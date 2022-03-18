@@ -65,7 +65,7 @@ script_module = torch.jit.trace(quantized_model, pt_input).eval()
 shape_tuple = [(a, b) for (a, b) in shape_dict.items()]
 mod, params = relay.frontend.from_pytorch(script_module, shape_tuple)
 
-print(mod)
+# print(mod)
 print(f"Target: {target}, Device: {dev}")
 extracted_tasks = extract_task_from_relay(mod, target)
 for i, tsk in enumerate(extracted_tasks):

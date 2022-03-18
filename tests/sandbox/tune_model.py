@@ -68,7 +68,7 @@ def get_huggingface_model(model_name: str):
     else:
         raise Exception("Not supported model")
 
-    input_shape = [1, 512]
+    input_shape = [16, 512]
     input_data = np.random.uniform(0, 100, size=input_shape).astype("long")
     torch_input_data = torch.from_numpy(input_data)
     scripted_model = torch.jit.trace(model.cpu(), torch_input_data).eval()
@@ -86,6 +86,9 @@ def _create_json_database(tmpdir: str) -> JSONDatabase:
 
 def test_integration_hugginface_model(model_name: str):
     mod, params, input_data = get_huggingface_model(model_name)
+    mod = relay.transform.InferType()(mod)
+    print(mod)
+    assert 0
     target = tvm.target.Target("nvidia/geforce-rtx-3070", host="llvm")
     dev = tvm.device("cuda", 0)
 
