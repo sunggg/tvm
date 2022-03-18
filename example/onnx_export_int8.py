@@ -19,20 +19,19 @@ from onnxruntime.quantization import (
 from onnxruntime.quantization.quant_utils import find_by_name
 from tvm.relay.frontend.common import infer_shape
 from google.protobuf.json_format import MessageToDict
-from tvm.meta_schedule.integration import extract_task_from_relay
 
 batch_size = 1
 seq_len = 128
 shape_dict = {
     "input_ids": (batch_size, seq_len),
-    "segment_ids": (batch_size, seq_len),
-    "input_mask": (batch_size, seq_len),
+    "attention_mask": (batch_size, seq_len),
+    "token_type_ids": (batch_size, seq_len),
 }
-data = dict()
-for key, shape in shape_dict.items():
-    data[key] = np.random.uniform(size=shape).astype("int64")
+data1 = np.random.uniform(size=shape_dict["input_ids"]).astype("long")
+data2 = np.random.uniform(size=shape_dict["attention_mask"]).astype("long")
+data3 = np.random.uniform(size=shape_dict["token_type_ids"]).astype("long")
 
-"""
+
 def onnx_quantization():
     def get_quantized_model(fp32_name, quant_name, static):
         if static:
@@ -87,70 +86,38 @@ def onnx_quantization():
 
     quant_model = quantize_static(model)
     mod, params = relay.frontend.from_onnx(quant_model, shape_dict, freeze_params=True)
-"""
 
 
-model_name = "models/bert-base-qat.onnx"
-quant_model_tag = "models/bert-base-int8"
+seq = tvm.transform.Sequential(
+    [
+        transform.InferType(),
+        transform.FoldConstant(),
+        transform.SimplifyInference(),
+        transform.FoldScaleAxis(),
+    ]
+)
+
+with tvm.transform.PassContext(opt_level=3):
+    mod = seq(mod)
+
+mod = tvm.relay.transform.FakeQuantizationToInteger(use_qat=True)(mod)
 
 
-def import_onnx_qat_and_save_relay(model_name, quant_model_tag):
-    quant_model = onnx.load(model_name)
-    mod, params = relay.frontend.from_onnx(quant_model, shape_dict, freeze_params=True)
-    seq = tvm.transform.Sequential(
-        [
-            transform.InferType(),
-            transform.FoldConstant(),
-            transform.SimplifyInference(),
-            transform.FoldScaleAxis(),
-        ]
-    )
+# with open("models/bert_large_int8.json", "w") as fo:
+#    fo.write(tvm.ir.save_json(mod))
 
-    with tvm.transform.PassContext(opt_level=3):
-        mod = seq(mod)
-
-    mod = tvm.relay.transform.FakeQuantizationToInteger(use_qat=True)(mod)
-
-    with open(f"{quant_model_tag}.json", "w") as fo:
-        fo.write(tvm.ir.save_json(mod))
-
-    with open(f"{quant_model_tag}.params", "wb") as fo:
-        fo.write(relay.save_param_dict(params))
-
-
-def read_relay(quant_model_tag):
-    with open(f"{quant_model_tag}.json", "r") as fi:
-        mod = tvm.ir.load_json(fi.read())
-    with open(f"{quant_model_tag}.params", "rb") as fi:
-        params = relay.load_param_dict(fi.read())
-
-    return mod, params
-
-
-# quant_model = onnx.load(model_name)
-# mod, params = relay.frontend.from_onnx(quant_model, shape_dict, freeze_params=True)
-
-
-import_onnx_qat_and_save_relay(model_name, quant_model_tag)
-mod, params = read_relay(quant_model_tag)
+# with open("models/bert_large_int8.params", "wb") as fo:
+#    fo.write(relay.save_param_dict(params))
 
 target, dev = tvm.target.Target("cuda"), tvm.cuda()
-
-print(mod)
-print(f"Target: {target}, Device: {dev}")
-extracted_tasks = extract_task_from_relay(mod, target)
-for i, tsk in enumerate(extracted_tasks):
-    print(f"[{i}] {tsk.task_name}, {tsk.mod}")
-
-
-assert 0
 with tvm.transform.PassContext(opt_level=3):
     lib = relay.build(mod, target, params=params)
 
 
 module = tvm.contrib.graph_executor.GraphModule(lib["default"](dev))
-for key in shape_dict.keys():
-    module.set_input(key, tvm.nd.array(data[key]))
+module.set_input("input_ids", tvm.nd.array(data1))
+module.set_input("attention_mask", tvm.nd.array(data2))
+module.set_input("token_type_ids", tvm.nd.array(data3))
 
 # evaluate
 print("Evaluate inference time cost...")

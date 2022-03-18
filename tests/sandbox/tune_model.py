@@ -86,9 +86,6 @@ def _create_json_database(tmpdir: str) -> JSONDatabase:
 
 def test_integration_hugginface_model(model_name: str):
     mod, params, input_data = get_huggingface_model(model_name)
-    mod = relay.transform.InferType()(mod)
-    print(mod)
-    assert 0
     target = tvm.target.Target("nvidia/geforce-rtx-3070", host="llvm")
     dev = tvm.device("cuda", 0)
 
