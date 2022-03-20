@@ -255,16 +255,18 @@ def measure(mod, target_str, target_host="llvm", device_id=0):
 if __name__ == "__main__":
     host_map = {"rtx3070": "llvm", "jetson": "llvm -mtriple=aarch64-linux-gnu"}
     device = "rtx3070"
+    batch_sizes = [1, 8, 16, 32]
+    num_iters = 3
     for name in [
         "squeezenet-conv2d",
         "resnet50-conv2d",
         # "bert-dense2d",
     ]:
-        for batch_size in [8, 16, 32]:
+        for batch_size in batch_sizes:
             spec = get_op_spec(batch_size)[name]
             exps = generate_experiments(spec)
 
-            for idx in range(5):
+            for idx in range(num_iters):
                 data = []
                 for (inp, attrs, workload, target) in exps:
                     perf = measure(workload, target, target_host=host_map[device])
