@@ -41,6 +41,9 @@ def pf_conv2d(inputs, attrs, dim, stride):
             new_input2 = copy.deepcopy(inputs[1])
             new_input2[0][dim] = ii
             new_workload.append([[new_input1, new_input2], attrs])
+
+        # new_workload.append([inputs, attrs])
+        # new_workload.append([[[[1, 164, 28, 28], "float32"], [[256, 164, 1, 1], "float32"]], attrs])
     else:
         raise Exception("Not implemented yet")
     return new_workload
@@ -65,71 +68,73 @@ def pf_grouped_conv2d(inputs, attrs, dim, stride):
     return new_workload
 
 
-OP_SPECS = {
-    "bert-dense2d": {
-        "impl": relay.nn.dense,
-        "inputs": [[[8192, 768], "float32"], [[768, 768], "float32"]],
-        # "output_shape": [[8192, 768], "float32"],
-        "attrs": {},
-        "target": "cublas",
-        "partition_func": pf_dense,
-        "dim": 1,
-        "stride": 1,
-    },
-    "resnet50-conv2d": {
-        "impl": relay.nn.conv2d,
-        "inputs": [
-            [[1, 256, 56, 56], "float32"],
-            [[128, 256, 1, 1], "float32"],
-        ],
-        # "output_shape": [[8, 128, 28, 28], "float32"],
-        "attrs": {
-            "strides": (2, 2),
-            "padding": (0, 0, 0, 0),
-            "channels": 128,
-            "kernel_size": (1, 1),
+def get_op_spec(batch_size):
+    OP_SPECS = {
+        "bert-dense2d": {
+            "impl": relay.nn.dense,
+            "inputs": [[[8192, 768], "float32"], [[768, 768], "float32"]],
+            # "output_shape": [[8192, 768], "float32"],
+            "attrs": {},
+            "target": "cublas",
+            "partition_func": pf_dense,
+            "dim": 1,
+            "stride": 1,
         },
-        "target": "cudnn",
-        "partition_func": pf_conv2d,
-        "dim": 1,
-        "stride": 1,
-    },
-    "mobilenet-conv2d": {
-        "impl": relay.nn.conv2d,
-        "inputs": [
-            [[1, 256, 28, 28], "float32"],
-            [[256, 1, 3, 3], "float32"],
-        ],
-        # "output_shape": [[1, 256, 28, 28], "float32"],
-        "attrs": {
-            "padding": (1, 1, 1, 1),
-            "groups": 256,
-            "channels": 128,
-            "kernel_size": (3, 3),
+        "resnet50-conv2d": {
+            "impl": relay.nn.conv2d,
+            "inputs": [
+                [[batch_size, 256, 56, 56], "float32"],
+                [[128, 256, 1, 1], "float32"],
+            ],
+            # "output_shape": [[8, 128, 28, 28], "float32"],
+            "attrs": {
+                "strides": (2, 2),
+                "padding": (0, 0, 0, 0),
+                "channels": 128,
+                "kernel_size": (1, 1),
+            },
+            "target": "cudnn",
+            "partition_func": pf_conv2d,
+            "dim": 1,
+            "stride": 1,
         },
-        "target": "cudnn",
-        "partition_func": pf_grouped_conv2d,
-        "dim": 1,
-        "stride": 1,
-    },
-    "squeezenet-conv2d": {
-        "impl": relay.nn.conv2d,
-        "inputs": [
-            [[1, 256, 28, 28], "float32"],
-            [[256, 256, 1, 1], "float32"],
-        ],
-        # "output_shape": [[1, 256, 28, 28], "float32"],
-        "attrs": {
-            "padding": (0, 0, 0, 0),
-            "channels": 256,
-            "kernel_size": (1, 1),
+        "mobilenet-conv2d": {
+            "impl": relay.nn.conv2d,
+            "inputs": [
+                [[batch_size, 256, 28, 28], "float32"],
+                [[256, 1, 3, 3], "float32"],
+            ],
+            # "output_shape": [[1, 256, 28, 28], "float32"],
+            "attrs": {
+                "padding": (1, 1, 1, 1),
+                "groups": 256,
+                "channels": 128,
+                "kernel_size": (3, 3),
+            },
+            "target": "cudnn",
+            "partition_func": pf_grouped_conv2d,
+            "dim": 1,
+            "stride": 1,
         },
-        "target": "cudnn",
-        "partition_func": pf_conv2d,
-        "dim": 1,
-        "stride": 1,
-    },
-}
+        "squeezenet-conv2d": {
+            "impl": relay.nn.conv2d,
+            "inputs": [
+                [[batch_size, 256, 28, 28], "float32"],
+                [[256, 256, 1, 1], "float32"],
+            ],
+            # "output_shape": [[1, 256, 28, 28], "float32"],
+            "attrs": {
+                "padding": (0, 0, 0, 0),
+                "channels": 256,
+                "kernel_size": (1, 1),
+            },
+            "target": "cudnn",
+            "partition_func": pf_conv2d,
+            "dim": 1,
+            "stride": 1,
+        },
+    }
+    return OP_SPECS
 
 
 def gen_workload(impl, inputs, attrs):
@@ -142,7 +147,7 @@ def gen_workload(impl, inputs, attrs):
     return tvm.IRModule.from_expr(f)
 
 
-def generate_experiments(spec):
+def generate_experiments(spec, batch_size=1):
     exps = []
     impl = spec["impl"]
     orig_inputs = spec["inputs"]
@@ -249,17 +254,22 @@ def measure(mod, target_str, target_host="llvm", device_id=0):
 
 if __name__ == "__main__":
     host_map = {"rtx3070": "llvm", "jetson": "llvm -mtriple=aarch64-linux-gnu"}
-
     device = "rtx3070"
-    for name in ["bert-dense2d", "resnet50-conv2d", "squeezenet-conv2d"]:
-        spec = OP_SPECS[name]
-        exps = generate_experiments(spec)
+    for name in [
+        "squeezenet-conv2d",
+        "resnet50-conv2d",
+        # "bert-dense2d",
+    ]:
+        for batch_size in [8, 16, 32]:
+            spec = get_op_spec(batch_size)[name]
+            exps = generate_experiments(spec)
 
-        data = []
-        for (inp, attrs, workload, target) in exps:
-            perf = measure(workload, target, target_host=host_map[device])
-            data.append((inp, attrs, *perf))
+            for idx in range(5):
+                data = []
+                for (inp, attrs, workload, target) in exps:
+                    perf = measure(workload, target, target_host=host_map[device])
+                    data.append((inp, attrs, *perf))
 
-        pd.DataFrame(data).to_csv(
-            f"results/{device}_{name}_{spec['target']}_d{spec['dim']}s{spec['stride']}.csv"
-        )
+                pd.DataFrame(data).to_csv(
+                    f"results/{device}_{name}_bs{batch_size}_{spec['target']}_d{spec['dim']}s{spec['stride']}_{idx}.csv"
+                )
