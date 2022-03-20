@@ -12,6 +12,7 @@ from tvm.runtime import Module
 from typing import List
 import itertools
 import pandas as pd
+import copy
 
 
 def pf_dense(inputs, attrs, dim, stride):
@@ -35,9 +36,9 @@ def pf_conv2d(inputs, attrs, dim, stride):
     new_workload = []
     if dim == 1:
         for ii in range(1, inputs[0][0][dim], stride):
-            new_input1 = list(inputs[0])
+            new_input1 = copy.deepcopy(inputs[0])
             new_input1[0][dim] = ii
-            new_input2 = list(inputs[1])
+            new_input2 = copy.deepcopy(inputs[1])
             new_input2[0][dim] = ii
             new_workload.append([[new_input1, new_input2], attrs])
     else:
@@ -49,9 +50,9 @@ def pf_grouped_conv2d(inputs, attrs, dim, stride):
     new_workload = []
     if dim == 1:
         for ii in range(1, inputs[0][0][dim], stride):
-            new_input1 = list(inputs[0])
+            new_input1 = copy.deepcopy(inputs[0])
             new_input1[0][dim] = ii
-            new_input2 = list(inputs[1])
+            new_input2 = copy.deepcopy(inputs[1])
             new_input2[0][dim] = ii
 
             new_attrs = dict(attrs)
@@ -69,9 +70,11 @@ OP_SPECS = {
         "impl": relay.nn.dense,
         "inputs": [[[8192, 768], "float32"], [[768, 768], "float32"]],
         # "output_shape": [[8192, 768], "float32"],
-        "attrs": None,
+        "attrs": {},
         "target": "cublas",
         "partition_func": pf_dense,
+        "dim": 1,
+        "stride": 1,
     },
     "resnet50-conv2d": {
         "impl": relay.nn.conv2d,
@@ -147,7 +150,7 @@ def generate_experiments(spec):
     for pp in spec["partition_func"](orig_inputs, spec["attrs"], spec["dim"], spec["stride"]):
         inp, attrs = pp[0], pp[1]
         w = gen_workload(impl, inp, attrs)
-        exps.append([w, spec["target"]])
+        exps.append([inp, attrs, w, spec["target"]])
 
     return exps
 
@@ -160,7 +163,7 @@ def measure(mod, target_str, target_host="llvm", device_id=0):
     else:
         raise Exception("Unsupported target")
 
-    target = tvm.target.Target(target_str)
+    target = tvm.target.Target(target_str, target_host)
     # Evaluation
     def relay_build(
         mod: Module,
@@ -245,16 +248,18 @@ def measure(mod, target_str, target_host="llvm", device_id=0):
 
 
 if __name__ == "__main__":
+    host_map = {"rtx3070": "llvm", "jetson": "llvm -mtriple=aarch64-linux-gnu"}
+
     device = "rtx3070"
-    name = "resnet50-conv2d"
-    spec = OP_SPECS[name]
-    exps = generate_experiments(spec)
+    for name in ["bert-dense2d", "resnet50-conv2d", "squeezenet-conv2d"]:
+        spec = OP_SPECS[name]
+        exps = generate_experiments(spec)
 
-    data = []
-    for (workload, target) in exps:
-        perf = measure(workload, target)
-        data.append(perf)
+        data = []
+        for (inp, attrs, workload, target) in exps:
+            perf = measure(workload, target, target_host=host_map[device])
+            data.append((inp, attrs, *perf))
 
-    pd.DataFrame(data).to_csv(
-        f"results/{device}_{name}_{spec['target']}_d{spec['dim']}s{spec['stride']}.csv"
-    )
+        pd.DataFrame(data).to_csv(
+            f"results/{device}_{name}_{spec['target']}_d{spec['dim']}s{spec['stride']}.csv"
+        )
