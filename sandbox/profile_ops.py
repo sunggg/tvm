@@ -18,12 +18,12 @@ import copy
 def pf_dense(inputs, attrs, dim, stride):
     new_workload = []
     if dim == 0:
-        for ii in range(1, inputs[0][0][dim], stride):
+        for ii in range(1, inputs[0][0][dim] + 1, stride):
             new_input = ((ii, inputs[0][0][1]), inputs[0][1])
             new_workload.append([[new_input, inputs[1]], attrs])
 
     elif dim == 1:
-        for ii in range(1, inputs[0][0][dim], stride):
+        for ii in range(1, inputs[0][0][dim] + 1, stride):
             new_input1 = ((inputs[0][0][0], ii), inputs[0][1])
             new_input2 = ((inputs[1][0][0], ii), inputs[1][1])
             new_workload.append([[new_input1, new_input2], attrs])
@@ -35,7 +35,7 @@ def pf_dense(inputs, attrs, dim, stride):
 def pf_conv2d(inputs, attrs, dim, stride):
     new_workload = []
     if dim == 1:
-        for ii in range(1, inputs[0][0][dim], stride):
+        for ii in range(1, inputs[0][0][dim] + 1, stride):
             new_input1 = copy.deepcopy(inputs[0])
             new_input1[0][dim] = ii
             new_input2 = copy.deepcopy(inputs[1])
@@ -44,6 +44,16 @@ def pf_conv2d(inputs, attrs, dim, stride):
 
         # new_workload.append([inputs, attrs])
         # new_workload.append([[[[1, 164, 28, 28], "float32"], [[256, 164, 1, 1], "float32"]], attrs])
+    elif dim == 5:
+        # output channel
+        for ii in range(1, inputs[1][0][0] + 1, stride):
+            new_input1 = copy.deepcopy(inputs[0])
+            new_input2 = copy.deepcopy(inputs[1])
+            new_input2[0][0] = ii
+
+            new_attrs = dict(attrs)
+            new_attrs["channels"] = ii
+            new_workload.append([[new_input1, new_input2], new_attrs])
     else:
         raise Exception("Not implemented yet")
     return new_workload
@@ -95,7 +105,7 @@ def get_op_spec(batch_size):
             },
             "target": "cudnn",
             "partition_func": pf_conv2d,
-            "dim": 1,
+            "dim": 5,
             "stride": 1,
         },
         "mobilenet-conv2d": {
@@ -130,7 +140,7 @@ def get_op_spec(batch_size):
             },
             "target": "cudnn",
             "partition_func": pf_conv2d,
-            "dim": 1,
+            "dim": 5,
             "stride": 1,
         },
     }
@@ -161,9 +171,9 @@ def generate_experiments(spec, batch_size=1):
 
 
 def measure(mod, target_str, target_host="llvm", device_id=0):
-    if target_str == "cudnn" or "cublas":
+    if target_str in ["cudnn", "cublas"]:
         target_str = "cuda -libs=" + target_str
-    elif target_str == "cuda":
+    elif target_str in ["cuda", "llvm"]:
         pass
     else:
         raise Exception("Unsupported target")
