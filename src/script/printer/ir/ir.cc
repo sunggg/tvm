@@ -65,11 +65,15 @@ TVM_STATIC_IR_FUNCTOR(IRDocsifier, vtable)
       With<IRFrame> f(d);
       (*f)->AddDispatchToken(d, "ir");
       IdDoc module_doc = d->Define(mod, f(), GetBindingName(d).value_or("Module"));
+      /*
+      // TODO(@sunggg): Currently, we skip printing IRModule attribute until we have
+      // better solution for round-trippabiltiy of runtime::Module for BYOC
       if (mod->attrs.defined() && !mod->attrs->dict.empty()) {
         (*f)->stmts.push_back(
             ExprStmtDoc(IR(d, "module_attrs")  //
                             ->Call({d->AsDoc<ExprDoc>(mod->attrs, p->Attr("attrs"))})));
       }
+      */
       if (mod->global_infos.defined() && !mod->global_infos.empty()) {
         (*f)->stmts.push_back(ExprStmtDoc(
             IR(d, "module_global_infos")  //
