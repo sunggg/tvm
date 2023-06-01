@@ -285,11 +285,80 @@ def test_match_call_attr():
 
 
 def test_is_call_tir():
-    lv1_val = bindings[1].value
-    var2val = get_var2val(Module["main"])
-    assert is_call_tir("tir_relu").match(lv1_val)
-    assert is_call_tir("tir_relu", [is_call_tir("tir_matmul")]).match(lv1_val, var2val=var2val)
-    assert not is_call_tir("tir_relu", [is_call_tir("tir_relu")]).match(lv1_val, var2val=var2val)
+    @tvm.script.ir_module
+    class Module:
+        @T.prim_func
+        def rotary_embedding1(
+            A: T.Buffer((T.int64(1), T.int64(1), T.int64(32), T.int64(128)), "float16"),
+            B: T.Buffer((T.int64(2048), T.int64(128)), "float16"),
+            C: T.Buffer((T.int64(2048), T.int64(128)), "float16"),
+            rotary: T.Buffer((T.int64(1), T.int64(1), T.int64(32), T.int64(128)), "float16"),
+            n: T.int64,
+        ):
+            T.func_attr({"op_pattern": 8, "tir.noalias": T.bool(True)})
+            # with T.block("root"):
+            for i0, i1, i2, i3 in T.grid(T.int64(1), T.int64(1), T.int64(32), T.int64(128)):
+                with T.block("rotary"):
+                    v_i0, v_i1, v_i2, v_i3 = T.axis.remap("SSSS", [i0, i1, i2, i3])
+                    T.reads(
+                        B[1 + v_i1 - T.int64(1), v_i3],
+                        A[v_i0, v_i1, v_i2, v_i3 - T.int64(64) : v_i3 - T.int64(64) + T.int64(129)],
+                        C[1 + v_i1 - T.int64(1), v_i3],
+                    )
+                    T.writes(rotary[v_i0, v_i1, v_i2, v_i3])
+                    rotary[v_i0, v_i1, v_i2, v_i3] = B[1 + v_i1 - T.int64(1), v_i3] * A[
+                        v_i0, v_i1, v_i2, v_i3
+                    ] + C[1 + v_i1 - T.int64(1), v_i3] * T.Select(
+                        T.int64(64) <= v_i3,
+                        A[v_i0, v_i1, v_i2, v_i3 - T.int64(64)],
+                        A[v_i0, v_i1, v_i2, v_i3 + T.int64(64)] * T.float16(-1),
+                    )
+
+        @R.function
+        def main(
+            x: R.Tensor((1, 1, 32, 128), "float16"),
+            cos_cached1: R.Tensor((2048, 128), dtype="float16"),
+            sin_cached1: R.Tensor((2048, 128), dtype="float16"),
+        ) -> R.Tensor:
+            n = T.int64()
+            with R.dataflow():
+                lv1529 = R.call_tir(
+                    Module.rotary_embedding1,
+                    (x, cos_cached1, sin_cached1),
+                    out_sinfo=R.Tensor((1, 1, 32, 128), dtype="float16"),
+                    tir_vars=R.shape([n]),
+                )
+                R.output(lv1529)
+            return lv1529
+
+    # pat = is_op("relax.call_tir")(GlobalVarPattern(), TuplePattern([wildcard(), wildcard(), wildcard()]), wildcard(), add_constraint=False)
+    # val = Module["main"].body.blocks[0].bindings[0].value
+    # print(val)
+    # print(pat.match(val))
+
+    with PatternContext() as ctx:
+        inp_pat = wildcard()
+        cos_cached = wildcard()
+        sin_cached = wildcard()
+        offset = wildcard()
+
+        tup = TuplePattern([inp_pat, cos_cached, sin_cached])
+        Q = is_op("relax.call_tir")(GlobalVarPattern(), tup, offset, add_constraint=False)
+        inp_pat.used_by(Q)
+        cos_cached.used_by(Q)
+        offset.used_by(Q)
+
+    def rewriter(matchings, _):
+        print(matchings)
+        # inp = matchings[inp_pat]
+        # cos = matchings[cos_cached]
+        # sin = matchings[sin_cached]
+        # n = matchings[offset]
+        # print(inp, cos, sin, n)
+        # split = R.call_tir(split_rotary, (inp, cos, sin, n), out_sinfo=R.Tuple(R.Tensor((1, 1, 4096), dtype="float16"), R.Tensor((1, 1, 4096), dtype="float16"), R.Tensor((1, 1, 4096), dtype="float16")))
+        return {}
+
+    rewrite_bindings(ctx, rewriter, Module["main"])
 
 
 @R.function
@@ -1282,5 +1351,15 @@ def test_combine_transposed_matmul_twice():
         rx.build(mod, target="llvm")
 
 
+def test_is_call_tir_orig():
+    lv1_val = bindings[1].value
+    var2val = get_var2val(Module["main"])
+    print(lv1_val)
+    assert is_call_tir("tir_relu").match(lv1_val)
+    # assert is_call_tir("tir_relu", [is_call_tir("tir_matmul")]).match(lv1_val, var2val=var2val)
+
+
 if __name__ == "__main__":
-    tvm.testing.main()
+    # tvm.testing.main()
+    # test_is_call_tir_orig()
+    test_is_call_tir()

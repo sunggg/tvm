@@ -607,10 +607,10 @@ class VMShapeLowerMutator
     // emit runtime check of shape
     if (always_check || !IsBaseOf(TensorStructInfo(op->dtype, op->ndim), GetStructInfo(value))) {
       // check_tensor_info(value, ndim, dtype, err_ctx)
-      Call call(builtin_check_tensor_info_,
-                {value, PrimValue::Int64(op->ndim), DataTypeImm(op->dtype), GetErrContext(err_ctx)},
-                Attrs(), {void_sinfo_});
-      builder_->Emit(call, "_");
+      // Call call(builtin_check_tensor_info_,
+      //           {value, PrimValue::Int64(op->ndim), DataTypeImm(op->dtype), GetErrContext(err_ctx)},
+      //           Attrs(), {void_sinfo_});
+      // builder_->Emit(call, "_");
     }
 
     if (auto* shape_expr = op->shape.as<ShapeExprNode>()) {

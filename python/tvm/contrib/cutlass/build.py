@@ -57,6 +57,7 @@ def _get_cutlass_compile_options(sm, threads, use_fast_math=False):
     cutlass_include = os.path.join(cutlass_root, "include")
     cutlass_util_include = os.path.join(cutlass_root, "tools/util/include")
     cutlass_attention_include = os.path.join(cutlass_root, "examples/41_fused_multi_head_attention")
+    cutlass_fpA_intB_gemm_include = os.path.join(cutlass_root, "../cutlass_fpA_intB_gemm")
 
     kwargs = {}
     kwargs["cc"] = "nvcc"
@@ -73,6 +74,7 @@ def _get_cutlass_compile_options(sm, threads, use_fast_math=False):
         f"-I{cutlass_include}",
         f"-I{cutlass_util_include}",
         f"-I{cutlass_attention_include}",
+        f"-I{cutlass_fpA_intB_gemm_include}",
     ]
     if use_fast_math:
         kwargs["options"].append("-DCUTLASS_USE_TANH_FOR_SIGMOID")
@@ -692,6 +694,19 @@ class CutlassRelaxFunctionAnnotator(relax.PyExprMutator):
 
         return f.with_attrs(attrs)
 
+    def handle_decode_matmul(self, f, op_type):
+        arg_idx = _extract_arg_idx(op_type, f)
+        return f.with_attrs(
+            {
+                "op_type": op_type,
+                "lhs_arg_idx": arg_idx["lhs"],
+                "rhs_arg_idx": arg_idx["rhs"],
+                "scales_arg_idx": arg_idx["scales"],
+                "bias_arg_idx": arg_idx.get("bias"),
+                "residual_arg_idx": arg_idx.get("residual"),
+            }
+        )
+
     def handle_matmul(self, f, op_type):
         """Tune and annotate a dense op."""
         signature = _extract_relax_function_signature(f)
@@ -866,7 +881,8 @@ class CutlassRelaxFunctionAnnotator(relax.PyExprMutator):
         """Annotate a layer norm op."""
         signature = _extract_relax_function_signature(f)
         attrs = {}
-        attrs["M"] = reduce(operator.mul, signature["arg0_shape"][:-1], 1)
+        # TODO
+        # attrs["M"] = reduce(operator.mul, signature["arg0_shape"][:-1], 1)
         attrs["N"] = signature["arg0_shape"][-1]
         dtype = signature["arg0_dtype"]
         attrs["data_type"] = {"float32": "float", "float16": "cutlass::half_t"}[str(dtype)]
@@ -881,6 +897,8 @@ class CutlassRelaxFunctionAnnotator(relax.PyExprMutator):
 
         if "conv2d" in op_type:
             return self.handle_conv2d(f, op_type)
+        elif "decode" in op_type:
+            return self.handle_decode_matmul(f, op_type)
         elif "matmul" in op_type:
             return self.handle_matmul(f, op_type)
         elif "attention" in op_type:

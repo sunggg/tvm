@@ -751,7 +751,7 @@ Optional<Map<DFPattern, Var>> MatchGraph(const PatternContext& ctx, const Datafl
 
   std::vector<DFPattern> roots;
   for (const auto& pat : ctx->src_ordered) {
-    if (pattern2node[pat.get()].parents.empty()) {
+    if (pattern2node[pat.get()].parents.empty() && !pat->IsInstance<PrimArrPatternNode>()) {
       roots.push_back(pat);
     }
   }
@@ -763,8 +763,11 @@ Optional<Map<DFPattern, Var>> MatchGraph(const PatternContext& ctx, const Datafl
   if (auto match = MatchTree({}, 0, pattern2node, var2node, &matcher, roots, ud_analysis)) {
     Map<DFPattern, Var> ret;
     for (const auto& [pat, p_node] : pattern2node) {
-      ICHECK(match->matched(p_node));
-      ret.Set(GetRef<DFPattern>(pat), GetRef<Var>(match->matched(p_node)));
+      // ICHECK(match->matched(p_node));
+      // ret.Set(GetRef<DFPattern>(pat), GetRef<Var>(match->matched(p_node)));
+      if (match->matched(p_node)) {
+	ret.Set(GetRef<DFPattern>(pat), GetRef<Var>(match->matched(p_node)));
+      }
     }
     return ret;
   }

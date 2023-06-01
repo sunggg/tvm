@@ -76,9 +76,9 @@ class AttentionKVCacheObj : public Object {
    * \param shape The cached values.
    */
   NDArray View(const ShapeTuple& shape) {
-    CHECK_EQ(shape[0], fill_count) << "Requested shape do not match the filled count";
+    CHECK_EQ(shape[1], fill_count) << "Requested shape do not match the filled count";
     for (int i = 1; i < this->data->ndim; ++i) {
-      CHECK_EQ(shape[i], data->shape[i]) << "Dimension " << i << " mismatch";
+      CHECK_EQ(shape[i + 1], data->shape[i]) << "Dimension " << i << " mismatch";
     }
     return data.CreateView(shape, data->dtype);
   }

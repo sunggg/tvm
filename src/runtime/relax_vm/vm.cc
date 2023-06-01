@@ -954,7 +954,7 @@ class VirtualMachineProfiler : public VirtualMachineImpl {
         }
 
         // warmup
-        this->InvokeClosureInternal(clo, inputs);
+	// this->InvokeClosureInternal(clo, inputs);
 
         prof_->Start();
         this->InvokeClosureInternal(clo, inputs);

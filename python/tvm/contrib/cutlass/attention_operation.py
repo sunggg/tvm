@@ -96,20 +96,13 @@ def instantiate_attention_template(attrs):
   typename Attention::Params p;
   p.logsumexp_ptr = nullptr;
   p.output_ptr = reinterpret_cast<T *>(out0->data);
-
   p.output_accum_ptr = nullptr;
-  uint64_t accumulator_buf_size = ${output_size} * sizeof(Attention::output_accum_t);
-  bool accumulator_buf_allocated = false;
   if (Attention::kNeedsOutputAccumulatorBuffer) {
-    if (accumulator_buf_size <= ${workspace}->shape[0]) {
-        p.output_accum_ptr = static_cast<float*>(${workspace}->data);
-    } else {
-        accumulator_buf_size = true;
-        cudaMalloc(
-          &p.output_accum_ptr,
-          accumulator_buf_size
-        );
-    }
+    // p.output_accum_ptr = static_cast<float*>(${workspace}->data);
+    cudaMalloc(
+      &p.output_accum_ptr,
+      ${output_size} * sizeof(Attention::output_accum_t)
+    );
   }
 
   p.num_heads = ${num_heads}; // N
@@ -139,9 +132,13 @@ def instantiate_attention_template(attrs):
   }
 
   CHECK(Attention::check_supported(p));
-  kernel_fn<<<p.getBlocksGrid(), p.getThreadsGrid(), smem_bytes>>>(p);
+  auto func = tvm::runtime::Registry::Get("runtime.get_cuda_stream");
+  ICHECK(func != nullptr);
+  cudaStream_t stream = static_cast<cudaStream_t>((*func)().operator void*());
 
-  if (accumulator_buf_allocated) {
+  kernel_fn<<<p.getBlocksGrid(), p.getThreadsGrid(), smem_bytes, stream>>>(p);
+
+  if (Attention::kNeedsOutputAccumulatorBuffer) {
     cudaFree(p.output_accum_ptr);
   }
 """

@@ -254,13 +254,25 @@ def make_stacked_attention_pattern(start_op: str, with_bias: bool = False):
     return out, annotations
 
 
-def make_layer_norm_pattern():
+def make_layer_norm_pattern(with_cast=False):
     """Create a layer norm pattern."""
     inp = wildcard()
     gamma = wildcard()
     beta = wildcard()
 
-    return is_op("relax.nn.layer_norm")(inp, gamma, beta), {}
+    if with_cast:
+        inp = is_op("relax.astype")(inp)
+
+    out = is_op("relax.nn.layer_norm")(inp, gamma, beta)
+
+    annotations = {
+        "layer_norm": out
+        }
+
+    if with_cast:
+        out = is_op("relax.astype")(out)
+
+    return out, annotations
 
 
 def make_attention_rewrite_pattern(
