@@ -194,6 +194,7 @@ void ArgBinder::BindDLTensor(const Buffer& buffer, const PrimExpr& device_type,
             arg_name + ".data", true)) {
     Var vptr(buffer->data);
     def_handle_dtype_.Set(vptr, tir::TypeAnnotation(buffer->dtype));
+    asserts_.emplace_back(AssertStmt(tvm::floormod(tvm::reinterpret(DataType::UInt(vptr->dtype.bits()), vptr), buffer->data_alignment) == 0, StringImm("alignment condition failed"), nop));
     // mark alignment of external bufs
     init_nest_.emplace_back(AttrStmt(vptr, tir::attr::storage_alignment,
                                      IntImm(DataType::Int(32), buffer->data_alignment), nop));
@@ -229,8 +230,11 @@ void ArgBinder::BindDLTensor(const Buffer& buffer, const PrimExpr& device_type,
     Array<PrimExpr> conds;
     for (size_t i = buffer->shape.size(); i != 0; --i) {
       size_t k = i - 1;
-      PrimExpr svalue = cast(stype, BufferLoad(buf_strides, {IntImm(DataType::Int(32), k)}));
-      conds.push_back(buffer->shape[k] == 1 || expect_stride == svalue);
+      //PrimExpr svalue = cast(stype, BufferLoad(buf_strides, {IntImm(DataType::Int(32), k)}));
+      //conds.push_back(buffer->shape[k] == 1 || expect_stride == svalue);
+      PrimExpr stride_value = cast(stype, BufferLoad(buf_strides, {IntImm(DataType::Int(32), k)}));
+      PrimExpr shape_value = cast(stype, BufferLoad(buf_shape, {IntImm(DataType::Int(32), k)}));
+      conds.push_back((expect_stride == stride_value) || (shape_value == IntImm(stype, 1)));
       expect_stride = expect_stride * buffer->shape[k];
     }
     std::ostringstream stride_err_msg;

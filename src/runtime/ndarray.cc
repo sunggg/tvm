@@ -181,7 +181,45 @@ struct NDArray::Internal {
 
 NDArray NDArray::CreateView(ShapeTuple shape, DLDataType dtype) {
   ICHECK(data_ != nullptr);
-  ICHECK(get_mutable()->dl_tensor.strides == nullptr) << "Can only create view for compact tensor";
+  const DLTensor& orig = get_mutable()->dl_tensor;
+  bool is_compact = [&]() {
+    if (orig.strides == nullptr) {
+      return true;
+    }
+
+    int compact_stride = 1;
+    for (int i = orig.ndim; i > 0; i--) {
+      int shape_i = orig.shape[i - 1];
+      int stride_i = orig.strides[i - 1];
+      if (compact_stride != stride_i) {
+        return false;
+      }
+      compact_stride *= shape_i;
+    }
+    return true;
+  }();
+
+  ICHECK(is_compact) << "Can only create view for compact tensor, but found strides " <<
+      [&]() {
+        std::stringstream ss;
+        ss << "[";
+        for (int i = 0; i < orig.ndim; i++) {
+          if (i) ss << ", ";
+          ss << orig.strides[i];
+        }
+        ss << "]";
+        return ss.str();
+      }() << ", for shape "
+                     << [&]() {
+                          std::stringstream ss;
+                          ss << "[";
+                          for (int i = 0; i < orig.ndim; i++) {
+                            if (i) ss << ", ";
+                            ss << orig.shape[i];
+                          }
+                          ss << "]";
+                          return ss.str();
+                        }();
   NDArray ret = Internal::Create(shape, dtype, get_mutable()->dl_tensor.device);
   ret.get_mutable()->dl_tensor.byte_offset = this->get_mutable()->dl_tensor.byte_offset;
   size_t curr_size = GetDataSize(this->get_mutable()->dl_tensor);
@@ -240,8 +278,8 @@ NDArray NDArray::FromDLPack(DLManagedTensor* tensor) {
   // fill up content.
   data->manager_ctx = tensor;
   ICHECK(::tvm::runtime::IsContiguous(tensor->dl_tensor)) << "DLManagedTensor must be contiguous.";
-  ICHECK(IsAligned(tensor->dl_tensor))
-      << "Data in DLManagedTensor is not aligned as required by NDArray";
+  //ICHECK(IsAligned(tensor->dl_tensor))
+  //    << "Data in DLManagedTensor is not aligned as required by NDArray";
   data->dl_tensor = tensor->dl_tensor;
   // update shape_
   std::vector<ShapeTuple::index_type> shape;
@@ -296,9 +334,10 @@ bool NDArray::AbilityOfZeroCopyForDLTensor(DLTensor* tensor, const Device& dev) 
 }
 
 bool NDArray::IsAligned(const DLTensor& tensor) {
-  return (reinterpret_cast<size_t>(static_cast<char*>(tensor.data) + tensor.byte_offset) %
-              tvm::runtime::kAllocAlignment ==
-          0);
+  //return (reinterpret_cast<size_t>(static_cast<char*>(tensor.data) + tensor.byte_offset) %
+  //            tvm::runtime::kAllocAlignment ==
+  //        0);
+  return reinterpret_cast<size_t>(tensor.data) % tvm::runtime::kAllocAlignment == 0;
 }
 
 TVM_REGISTER_OBJECT_TYPE(NDArray::Container);
