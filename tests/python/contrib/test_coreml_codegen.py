@@ -98,7 +98,6 @@ def test_annotate():
     mod = _create_graph()
     mod = transform.AnnotateTarget("coremlcompiler")(mod)
     mod = transform.PartitionGraph()(mod)
-
     expected = _create_graph_annotated()
     assert tvm.ir.structural_equal(mod, expected, map_free_vars=True)
 
@@ -240,6 +239,7 @@ def test_global_avg_pool2d():
 
 if __name__ == "__main__":
     test_annotate()
+    """
     test_compile_and_run()
     test_add()
     test_multiply()
@@ -250,3 +250,4 @@ if __name__ == "__main__":
     test_softmax()
     test_conv2d()
     test_global_avg_pool2d()
+    """

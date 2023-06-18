@@ -158,7 +158,7 @@ PackedFunc CoreMLRuntime::GetFunction(const std::string& name,
         ICHECK(args[i].type_code() == kTVMDLTensorHandle ||
                args[i].type_code() == kTVMNDArrayHandle)
             << "Expect NDArray or DLTensor as inputs\n";
-        if (args[i].type_code() == kTVMDLTensorHandle) {
+        if (args[i].type_code() == kTVMDLTensorHandle || args[i].type_code() == kTVMNDArrayHandle) {
           model_->SetInput([input_names[i] UTF8String], args[i]);
         } else {
           LOG(FATAL) << "Not implemented";

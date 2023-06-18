@@ -173,12 +173,13 @@ def compile_coreml(model, model_name="main", out_dir="."):
     mlmodel_path = os.path.join(out_dir, model_name + ".mlmodel")
     mlmodelc_path = os.path.join(out_dir, model_name + ".mlmodelc")
     metadata = {"inputs": list(model.input_description), "outputs": list(model.output_description)}
+
     # Use the description field to send info to CoreML runtime
     model.short_description = json.dumps(metadata)
     model.save(mlmodel_path)
 
     res = xcrun(["coremlcompiler", "compile", mlmodel_path, out_dir])
+
     if not os.path.isdir(mlmodelc_path):
         raise RuntimeError("Compile failed: %s" % res)
-
     return mlmodelc_path

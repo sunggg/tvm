@@ -163,7 +163,6 @@ class CodeGenRunner : ExprMutator {
       String codegen_name = "relax.ext." + target;
       auto codegen = runtime::Registry::Get(codegen_name);
       ICHECK(codegen) << "Codegen is not found: " << codegen_name << "\n";
-
       Array<runtime::Module> compiled_functions = (*codegen)(functions, options, constant_names);
       ext_mods.insert(ext_mods.end(), compiled_functions.begin(), compiled_functions.end());
     }

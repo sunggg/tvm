@@ -96,6 +96,7 @@ constexpr uint32_t kMaxFusedOps = 256;
 
 TVM_REGISTER_PASS_CONFIG_OPTION("relax.FuseOps.max_depth", Integer);
 
+int cnt = 0;
 class GraphCreator : public ExprVisitor {
  public:
   /*!
@@ -532,9 +533,11 @@ class FunctionCreator : public ExprMutator {
         name = String("param_" + std::to_string(n_param_for_const_++));
       }
 
-      Var param(std::move(name), GetStructInfo(expr));
-      arguments_.push_back(expr);
-      params_.push_back(param);
+      if(!expr->IsInstance<PrimValueNode>()){
+        Var param(std::move(name), GetStructInfo(expr));
+        arguments_.push_back(expr);
+        params_.push_back(param);
+      }
     }
   }
 
@@ -777,6 +780,7 @@ class OperatorFusor : public ExprMutator {
       if (!group2func_.count(group)) {
         group2func_.emplace(group, lift_constants_);
       }
+      LOG(INFO) << binding->var << " // " << group << " // " << group2func_.find(group)->second.name_hint_;
       group2func_.find(group)->second.AppendBinding(binding);
     }
   }
@@ -1078,8 +1082,11 @@ class CompositeFunctionAnnotator : public ExprMutator {
   explicit CompositeFunctionAnnotator(IRModule mod) : ExprMutator(mod) {}
   using ExprMutator::VisitExpr_;
 
+  Array<PrimValue> primvals_;
+
   IRModule Run() {
     auto mod = builder_->GetContextIRModule();
+    LOG(INFO) << mod;
     auto all_functions = mod->functions;
     for (const auto& entry : all_functions) {
       if (const auto* func = entry.second.as<FunctionNode>()) {
@@ -1112,9 +1119,22 @@ class CompositeFunctionAnnotator : public ExprMutator {
         builder_->GetContextIRModule()->Remove(GetRef<GlobalVar>(gvar));
         auto new_gvar = builder_->AddFunction(new_func, gsymbol);
         gvar_map_[gvar] = new_gvar;
+
+        primvals_.clear();
         return Call(new_gvar, call_node->args);
       }
     }
+    /*
+    else{
+      // operator call
+      for(auto arg: call_node->args){
+          if(const auto* primval = arg.as<PrimValueNode>()){
+            LOG(INFO) << GetRef<PrimValue>(primval);
+            primvals_.push_back(GetRef<PrimValue>(primval));
+          }
+        }
+    }
+    */
     return ExprMutator::VisitExpr_(call_node);
   }
 
@@ -1132,6 +1152,11 @@ class CompositeFunctionAnnotator : public ExprMutator {
       params.push_back(new_v);
     }
 
+    //for(auto v: primvals_){
+    //  Var new_v("primval", GetStructInfo(v));
+    //  param_vars.push_back(new_v);
+    //  params.push_back(v);
+    //}
     // pure if the inner func is pure (no need to force purity if it's forced for the inner func)
     return Function(param_vars, Call(f_inner, params), func_node->ret_struct_info,
                     Downcast<Function>(f_inner)->is_pure);
