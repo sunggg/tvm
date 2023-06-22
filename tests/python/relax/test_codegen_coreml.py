@@ -221,6 +221,24 @@ def test_global_avg_pool2d():
     verify(mod, [x_data])
 
 
+@tvm.testing.uses_gpu
+@requires_coremltools
+def test_subgraph():
+    x = relax.Var("x", relax.TensorStructInfo([10, 10], "float32"))
+    y = relax.Var("y", relax.TensorStructInfo([10, 10], "float32"))
+    bb = relax.BlockBuilder()
+    with bb.function("main", [x, y]):
+        with bb.dataflow():
+            lv0 = bb.emit(relax.op.multiply(x, y))
+            lv1 = bb.emit(relax.op.nn.softmax(lv0))
+            gv = bb.emit_output(lv1)
+        bb.emit_func_output(gv)
+    mod = bb.get()
+    x_data = tvm.nd.array(np.random.rand(10, 10).astype("float32"), dev)
+    y_data = tvm.nd.array(np.random.rand(10, 10).astype("float32"), dev)
+    verify(mod, [x_data, y_data])
+
+
 if __name__ == "__main__":
     # test_add()
     # test_multiply()
@@ -230,4 +248,6 @@ if __name__ == "__main__":
     # test_global_avg_pool2d()
     # test_conv2d()
     # test_expand_dims()
-    pytest.main([__file__])
+    test_subgraph()
+
+# pytest.main([__file__])

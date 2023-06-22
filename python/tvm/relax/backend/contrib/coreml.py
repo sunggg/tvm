@@ -20,6 +20,8 @@
 import os
 import shutil
 
+# from python.tvm.relax.expr import Function
+
 import tvm._ffi
 from ...expr_functor import PyExprVisitor, visitor
 from tvm.contrib import xcode, coreml_runtime
@@ -77,7 +79,10 @@ def partition_for_coreml(mod):
     """
 
     patterns = get_patterns_with_prefix("coreml")
-    mod = transform.FuseOpsByPattern(patterns, bind_constants=True, annotate_codegen=True)(mod)
+    # mod = transform.FuseOpsByPattern(patterns, bind_constants=True, annotate_codegen=True)(mod)
+
+    mod = transform.FuseOpsByPattern(patterns, bind_constants=True, annotate_codegen=False)(mod)
+    mod = transform.MergeCompositeFunctions()(mod)
     return mod
 
 
@@ -164,7 +169,6 @@ def _convert_avg_pool2d(builder, name, inputs, outputs, args, attrs):
         padding_type="VALID",
         input_name=inputs[0],
         output_name=outputs[0],
-        # is_global=True,
     )
 
 
@@ -179,6 +183,26 @@ _convert_map = {
     "nn.conv2d": _convert_conv2d,
     "nn.avg_pool2d": _convert_avg_pool2d,
 }
+
+
+@visitor
+class CallNodeInfoCollector(PyExprVisitor):
+    def __init__(self):
+        self.primvals = []
+        self.attrs = []
+        self.consts = []
+
+    def visit_call_(self, call: Call) -> None:
+        self.attrs.append(call.attrs)
+        for arg in call.args:
+            if isinstance(arg, PrimValue):
+                self.primvals.append(arg)
+            if isinstance(arg, Constant):
+                self.consts.append(arg)
+
+    def collect(self, expr):
+        self.visit_expr(expr)
+        return self.primvals, self.attrs, self.consts
 
 
 @visitor
@@ -236,8 +260,29 @@ class CodegenCoreML(PyExprVisitor):
         self.buf_idx_ = self.buf_idx_ + 1
         self.out_map[const] = [output]
 
+    def visit_function_(self, op) -> None:
+        for var in op.params:
+            name = var.name_hint
+            sinfo = var.struct_info
+            if isinstance(sinfo, TensorStructInfo):
+                shape = [int(v) for v in list(sinfo.shape)]
+            elif isinstance(sinfo, PrimStructInfo):
+                shape = []
+            else:
+                raise Exception("Currently not supported: ", type(sinfo))
+
+            dtype = sinfo.dtype
+            self.model_inputs_.append((name, shape, dtype))
+            print("inserting.. ", name)
+
+        self.visit_expr(op.body)
+
     def visit_var_(self, var):
+        if var in self.var2val:
+            self.visit_expr(self.var2val[var])
         name = var.name_hint
+        self.out_map[var] = [name]
+        """
         sinfo = var.struct_info
         if isinstance(sinfo, TensorStructInfo):
             shape = [int(v) for v in list(sinfo.shape)]
@@ -247,37 +292,31 @@ class CodegenCoreML(PyExprVisitor):
             raise Exception("Currently not supported: ", type(sinfo))
 
         dtype = sinfo.dtype
-        self.model_inputs_.append((name, shape, dtype))
-        self.out_map[var] = [name]
+        # self.model_inputs_.append((name, shape, dtype))
+        """
 
     def visit_call_(self, call: Call) -> None:
-        primvals = []
-        attrs = []
-        consts = []
-
-        @visitor
-        class Collector(PyExprVisitor):
-            def visit_call_(self, call: Call) -> None:
-                attrs.append(call.attrs)
-                for arg in call.args:
-                    if isinstance(arg, PrimValue):
-                        primvals.append(arg)
-                    if isinstance(arg, Constant):
-                        consts.append(arg)
-
         assert isinstance(call.op, Var)
         assert call.op in self.var2val
         func = self.var2val[call.op]
-        assert "Composite" in func.attrs, "Only composite functions are supported."
-        composite_name = func.attrs["Composite"]
-
-        Collector().visit_expr(func.body)
 
         inputs = []
         for arg in call.args:
             super().visit_expr(arg)
-            for out in self.out_map[arg]:
-                inputs.append(out)
+            if arg.name_hint == "lv_1":
+                # TODO: Get layer by using buffer name
+                # for out in self.out_map[arg]:
+                inputs.append("buf_0")
+            else:
+                # inputs.append(arg)
+                for out in self.out_map[arg]:
+                    inputs.append(out)
+
+        print("Visiting...", call.op, " // ", inputs)
+        assert "Composite" in func.attrs, "Only composite functions are supported."
+        composite_name = func.attrs["Composite"]
+
+        primvals, attrs, consts = CallNodeInfoCollector().collect(func.body)
 
         for arg in primvals:
             inputs.append(arg)
@@ -290,10 +329,11 @@ class CodegenCoreML(PyExprVisitor):
         op_name = composite_name[7:]
         layer_name = op_name + "_" + str(self.buf_idx_)
 
-        print(layer_name, call.attrs, inputs, call.args)
+        # print(layer_name, call.attrs, inputs, call.args)
         assert op_name in _convert_map, "{} is not supported".format(op_name)
+        print(inputs)
         _convert_map[op_name](self.builder, layer_name, inputs, outputs, call.args, attrs[0])
-
+        print(layer_name, ":", outputs)
         self.buf_idx_ = self.buf_idx_ + 1
         self.out_map[self.cur_binding_var] = outputs
 
@@ -314,7 +354,7 @@ class CodegenCoreML(PyExprVisitor):
     def serialize(self, func: Function):
         # TODO:handle params
         # handle func body
-        self.visit_expr(func.body)
+        self.visit_expr(func)
 
     def compile(self, out_dir):
         """
@@ -331,6 +371,8 @@ class CodegenCoreML(PyExprVisitor):
         input_names, input_dims, input_dtypes = zip(*self.model_inputs_)
         self.builder.set_input(input_names, input_dims)
 
+        print(self.model_inputs_)
+
         for i, dtype in enumerate(input_dtypes):
             assert dtype in FEATURE_TYPE_MAP
             input_desc = self.builder.spec.description.input
@@ -339,8 +381,8 @@ class CodegenCoreML(PyExprVisitor):
         output_dim = [int(n) for n in self.function.struct_info.ret.shape]
 
         # assert self.function.body in self.out_map
-        self.builder.set_output(["buf_0"], [output_dim])
-        # self.builder.set_output(self.out_map[self.function.body], [output_dim])
+        last_binding_var = self.function.body.blocks[0].bindings[-1].var
+        self.builder.set_output(self.out_map[last_binding_var], [output_dim])
 
         for i, dtype in enumerate([self.function.struct_info.ret.dtype]):
             assert dtype in FEATURE_TYPE_MAP
@@ -348,6 +390,7 @@ class CodegenCoreML(PyExprVisitor):
             output_desc[i].type.multiArrayType.dataType = FEATURE_TYPE_MAP[dtype]
 
         model = coremltools.models.MLModel(self.builder.spec)
+        print(model, self.model_name, out_dir)
         compile_coreml(model, self.model_name, out_dir)
 
 
@@ -359,7 +402,7 @@ def coreml_compiler(funcs, options, constant_names):
     compiled_funcs = []
     for func in funcs:
         assert isinstance(func, tvm.relax.Function)
-        model_dir = os.getcwd()
+        model_dir = os.getcwd() + "/tmp/"
         name = str(func.attrs.global_symbol)
         builder = CodegenCoreML(name, func)
         builder.serialize(func)
