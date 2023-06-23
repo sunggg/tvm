@@ -79,10 +79,9 @@ def partition_for_coreml(mod):
     """
 
     patterns = get_patterns_with_prefix("coreml")
-    # mod = transform.FuseOpsByPattern(patterns, bind_constants=True, annotate_codegen=True)(mod)
-
-    mod = transform.FuseOpsByPattern(patterns, bind_constants=True, annotate_codegen=False)(mod)
-    mod = transform.MergeCompositeFunctions()(mod)
+    mod = transform.FuseOpsByPattern(patterns, bind_constants=True, annotate_codegen=True)(mod)
+    # mod = transform.FuseOpsByPattern(patterns, bind_constants=True, annotate_codegen=False)(mod)
+    # mod = transform.MergeCompositeFunctions()(mod)
     return mod
 
 
@@ -270,30 +269,18 @@ class CodegenCoreML(PyExprVisitor):
                 shape = []
             else:
                 raise Exception("Currently not supported: ", type(sinfo))
-
             dtype = sinfo.dtype
             self.model_inputs_.append((name, shape, dtype))
-            print("inserting.. ", name)
 
         self.visit_expr(op.body)
 
     def visit_var_(self, var):
+        self.out_map[var] = [var.name_hint]
+        prev_binding_var = self.cur_binding_var
+        self.cur_binding_var = var
         if var in self.var2val:
             self.visit_expr(self.var2val[var])
-        name = var.name_hint
-        self.out_map[var] = [name]
-        """
-        sinfo = var.struct_info
-        if isinstance(sinfo, TensorStructInfo):
-            shape = [int(v) for v in list(sinfo.shape)]
-        elif isinstance(sinfo, PrimStructInfo):
-            shape = []
-        else:
-            raise Exception("Currently not supported: ", type(sinfo))
-
-        dtype = sinfo.dtype
-        # self.model_inputs_.append((name, shape, dtype))
-        """
+        self.cur_binding_var = prev_binding_var
 
     def visit_call_(self, call: Call) -> None:
         assert isinstance(call.op, Var)
@@ -303,44 +290,42 @@ class CodegenCoreML(PyExprVisitor):
         inputs = []
         for arg in call.args:
             super().visit_expr(arg)
-            if arg.name_hint == "lv_1":
-                # TODO: Get layer by using buffer name
-                # for out in self.out_map[arg]:
-                inputs.append("buf_0")
-            else:
-                # inputs.append(arg)
-                for out in self.out_map[arg]:
-                    inputs.append(out)
-
-        print("Visiting...", call.op, " // ", inputs)
-        assert "Composite" in func.attrs, "Only composite functions are supported."
-        composite_name = func.attrs["Composite"]
+            for out in self.out_map[arg]:
+                inputs.append(out)
 
         primvals, attrs, consts = CallNodeInfoCollector().collect(func.body)
-
         for arg in primvals:
             inputs.append(arg)
 
         for arg in consts:
-            inputs.append(arg)
+            output = "buf_" + str(self.buf_idx_)
+            self.builder.add_load_constant_nd(
+                name=output,
+                output_name=output,
+                constant_value=arg.data.numpy(),
+                shape=arg.data.shape,
+            )
+            self.buf_idx_ = self.buf_idx_ + 1
+            self.out_map[arg] = [output]
+            inputs.append(output)
+
+        print("Visiting...", call.op, " // ", inputs)
+        assert "Composite" in func.attrs, "Only composite functions are supported."
+        composite_name = func.attrs["Composite"]
 
         outputs = ["buf_" + str(self.buf_idx_)]
         # Get the op name and remove "relax." prefix.
         op_name = composite_name[7:]
         layer_name = op_name + "_" + str(self.buf_idx_)
 
-        # print(layer_name, call.attrs, inputs, call.args)
         assert op_name in _convert_map, "{} is not supported".format(op_name)
-        print(inputs)
         _convert_map[op_name](self.builder, layer_name, inputs, outputs, call.args, attrs[0])
-        print(layer_name, ":", outputs)
         self.buf_idx_ = self.buf_idx_ + 1
         self.out_map[self.cur_binding_var] = outputs
 
     def visit_var_binding_(self, binding: VarBinding) -> None:
-        self.cur_binding_var = binding.var
-        self.visit_expr(binding.value)
-        self.cur_binding_var = None
+        # Visit var of the last binding
+        self.visit_expr(binding.var)
 
     def visit_binding_block_(self, block: BindingBlock) -> None:
         # We only visit the last VarBinding to retrieve
@@ -371,8 +356,6 @@ class CodegenCoreML(PyExprVisitor):
         input_names, input_dims, input_dtypes = zip(*self.model_inputs_)
         self.builder.set_input(input_names, input_dims)
 
-        print(self.model_inputs_)
-
         for i, dtype in enumerate(input_dtypes):
             assert dtype in FEATURE_TYPE_MAP
             input_desc = self.builder.spec.description.input
@@ -390,7 +373,6 @@ class CodegenCoreML(PyExprVisitor):
             output_desc[i].type.multiArrayType.dataType = FEATURE_TYPE_MAP[dtype]
 
         model = coremltools.models.MLModel(self.builder.spec)
-        print(model, self.model_name, out_dir)
         compile_coreml(model, self.model_name, out_dir)
 
 

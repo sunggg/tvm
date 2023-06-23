@@ -80,6 +80,22 @@ def test_add():
 
 @tvm.testing.uses_gpu
 @requires_coremltools
+def test_add_const():
+    x = relax.Var("x", relax.TensorStructInfo([10, 10], "float32"))
+    y = relax.const(np.ones([10, 10]), "float32")
+    bb = relax.BlockBuilder()
+    with bb.function("main", [x]):
+        with bb.dataflow():
+            lv0 = bb.emit(relax.op.add(x, y))
+            gv = bb.emit_output(lv0)
+        bb.emit_func_output(gv)
+    mod = bb.get()
+    x_data = tvm.nd.array(np.random.rand(10, 10).astype("float32"), dev)
+    verify(mod, [x_data])
+
+
+@tvm.testing.uses_gpu
+@requires_coremltools
 def test_multiply():
     x = relax.Var("x", relax.TensorStructInfo([10, 10], "float32"))
     y = relax.Var("y", relax.TensorStructInfo([10, 10], "float32"))
@@ -240,14 +256,17 @@ def test_subgraph():
 
 
 if __name__ == "__main__":
-    # test_add()
-    # test_multiply()
-    # test_relu()
-    # test_clip()
-    # test_softmax()
-    # test_global_avg_pool2d()
-    # test_conv2d()
-    # test_expand_dims()
+    """
+    test_add()
+    test_multiply()
+    test_relu()
+    test_clip()
+    test_softmax()
+    test_global_avg_pool2d()
+    test_conv2d()
+    test_expand_dims()
     test_subgraph()
-
-# pytest.main([__file__])
+    """
+    # test_softmax()
+    test_add_const()
+    # pytest.main([__file__])
