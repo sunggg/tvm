@@ -105,6 +105,7 @@ TVM_DLL bool IsImpureCall(const Call& call);
  */
 TVM_DLL Function CopyWithNewVars(Function func);
 
+Expr ToNonDataflow(const Expr& e);
 }  // namespace relax
 }  // namespace tvm
 

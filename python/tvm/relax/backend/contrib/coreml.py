@@ -79,9 +79,9 @@ def partition_for_coreml(mod):
     """
 
     patterns = get_patterns_with_prefix("coreml")
-    mod = transform.FuseOpsByPattern(patterns, bind_constants=True, annotate_codegen=True)(mod)
-    # mod = transform.FuseOpsByPattern(patterns, bind_constants=True, annotate_codegen=False)(mod)
-    # mod = transform.MergeCompositeFunctions()(mod)
+    # mod = transform.FuseOpsByPattern(patterns, bind_constants=True, annotate_codegen=True)(mod)
+    mod = transform.FuseOpsByPattern(patterns, bind_constants=True, annotate_codegen=False)(mod)
+    mod = transform.MergeCompositeFunctions()(mod)
     return mod
 
 

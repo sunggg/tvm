@@ -39,7 +39,7 @@
  * Correct partitioning:
  *
  *     O         O
- *    / \       /	      \
+ *    / \       /	            \
  *   O   X --> O    +     +    X
  *    \ /             \ /
  *     O               O
@@ -344,7 +344,7 @@ IRModule MergeCompositeFunctions(IRModule mod) {
     }
   }
   for (const auto& [gvar, func] : to_update) {
-    new_mod->Update(gvar, func);
+    new_mod->Update(gvar, Downcast<Function>(ToNonDataflow(func)));
   }
   // TODO(@tvm-team): Implicit pass dependency. Revisit when we have a better way to handle this.
   return DeadCodeElimination(new_mod, {"main"});
