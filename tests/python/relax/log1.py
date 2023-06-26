@@ -44,11 +44,6 @@ class Module:
         return gv
 """
 """
-# issues:
-# M1. dataflow block in the outer func
-# m1. remove primitive
-# m2. naming convention
-
 @I.ir_module
 class Module:
     @R.function
@@ -81,11 +76,21 @@ class Module:
             R.output(gv)
         return gv
 """
-
+"""
 # Issues:
-# 1. does not collect all inputs. only collect input of the last callnode
-# 2. last assignment is unnecessary
+# M1. dataflow block in the outer func
+# m1. remove primitive
+# m2. naming convention
+# m3. does not collect all inputs. only collect input of the last callnode
+# m4. last assignment is unnecessary
 
+# issue1. CanonicalizeBinding does not work with R.output
+# This might be too strong constraint
+# e.g.,
+#    with Dataflow():
+#      y = ...
+#      x = y
+#      R.output(x)
 
 @I.ir_module
 class Module:
@@ -147,7 +152,7 @@ assert tvm.relax.analysis.well_formed(mod)
 mod = tvm.relax.transform.RunCodegen()(mod)
 assert tvm.relax.analysis.well_formed(mod)
 
-mod.show()
+# mod.show()
 
 
 target, dev = "llvm", tvm.cpu(0)
@@ -157,3 +162,34 @@ y_data = tvm.nd.array(np.random.rand(10, 10).astype("float32"), dev)
 ex1 = relax.build(mod, target=target)
 vm1 = relax.VirtualMachine(ex1, dev)
 out1 = vm1["main"](x_data, y_data)
+
+"""
+# from tvm.script import ir as I
+# from tvm.script import relax as R
+
+
+@I.ir_module
+class Module:
+    @R.function
+    def fused_relax_nn_softmax(
+        x: R.Tensor((10, 10), dtype="float32")
+    ) -> R.Tensor((10, 10), dtype="float32"):
+        R.func_attr({"Composite": "coreml.nn.softmax", "Primitive": 1})
+        gv: R.Tensor((10, 10), dtype="float32") = R.nn.softmax(x, axis=-1)
+        return gv
+
+    @R.function
+    def main(x: R.Tensor((10, 10), dtype="float32")) -> R.Tensor((10, 10), dtype="float32"):
+        cls = Module
+        with R.dataflow():
+            lv: R.Tensor((10, 10), dtype="float32") = cls.fused_relax_nn_softmax(x)
+            gv: R.Tensor((10, 10), dtype="float32") = lv
+            R.output(gv)
+        return gv
+
+
+mod = Module
+# mod.show()
+mod = relax.transform.MergeCompositeFunctions()(mod)
+# mod.show()
+mod = tvm.relax.transform.RunCodegen()(mod)
