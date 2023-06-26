@@ -108,6 +108,8 @@ class DataflowBlockRewrite : public ObjectRef {
   TVM_DEFINE_OBJECT_REF_METHODS(DataflowBlockRewrite, ObjectRef, DataflowBlockRewriteNode);
 };
 
+Function RemoveAllUnused(Function fn);
+
 }  // namespace relax
 }  // namespace tvm
 

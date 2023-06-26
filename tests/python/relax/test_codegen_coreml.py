@@ -20,7 +20,6 @@ import pytest
 import tvm
 import tvm.testing
 from tvm import relax
-from tvm.script import relax as R
 from tvm.relax.backend.contrib.coreml import partition_for_coreml
 
 requires_coremltools = tvm.testing.requires_package("coremltools")
@@ -42,12 +41,12 @@ def _has_xcode():
 @requires_coremltools
 def verify(mod, inputs):
     mod1 = partition_for_coreml(mod)
-    mod1.show()
     mod1 = relax.transform.RunCodegen()(mod1)
     assert relax.analysis.well_formed(mod1)
-    mod1.show()
     assert mod1.attrs, "Should exist if offloaded successfully."
     assert "external_mods" in mod1.attrs, "Should exist if offloaded successfully."
+    mod1 = relax.transform.LegalizeOps()(mod1)
+    assert relax.analysis.well_formed(mod1)
 
     ex1 = relax.build(mod1, target=target)
     vm1 = relax.VirtualMachine(ex1, dev)
@@ -114,11 +113,54 @@ def test_multiply():
 
 @tvm.testing.uses_gpu
 @requires_coremltools
+def test_matmul():
+    x = relax.Var("x", relax.TensorStructInfo([8, 10], "float32"))
+    y = relax.Constant(tvm.nd.array(np.random.rand(10, 8).astype("float32"), dev))
+    bb = relax.BlockBuilder()
+    with bb.function("main", [x]):
+        with bb.dataflow():
+            lv0 = bb.emit(relax.op.matmul(x, y))
+            gv = bb.emit_output(lv0)
+        bb.emit_func_output(gv)
+    mod = bb.get()
+
+    x_data = tvm.nd.array(np.random.rand(8, 10).astype("float32"), dev)
+    verify(mod, [x_data])
+
+    x = relax.Var("x", relax.TensorStructInfo([8, 10], "float32"))
+    y = relax.Var("y", relax.TensorStructInfo([10, 8], "float32"))
+    bb = relax.BlockBuilder()
+    with bb.function("main", [x, y]):
+        with bb.dataflow():
+            lv0 = bb.emit(relax.op.matmul(x, y))
+            gv = bb.emit_output(lv0)
+        bb.emit_func_output(gv)
+    mod = bb.get()
+
+    x_data = tvm.nd.array(np.random.rand(8, 10).astype("float32"), dev)
+    y_data = tvm.nd.array(np.random.rand(10, 8).astype("float32"), dev)
+    verify(mod, [x_data, y_data])
+
+
+@tvm.testing.uses_gpu
+@requires_coremltools
 def test_clip():
     x = relax.Var("x", relax.TensorStructInfo([10, 10], "float32"))
     bb = relax.BlockBuilder()
-    """
-    TODO: test with this
+
+    with bb.function("main", [x]):
+        with bb.dataflow():
+            lv0 = bb.emit(relax.op.clip(x, 0, 4))
+            gv0 = bb.emit_output(lv0)
+        bb.emit_func_output(gv0)
+    mod = bb.get()
+
+    x_data = tvm.nd.array(np.random.rand(10, 10).astype("float32"), dev)
+    verify(mod, [x_data])
+
+    x = relax.Var("x", relax.TensorStructInfo([10, 10], "float32"))
+    bb = relax.BlockBuilder()
+
     with bb.function("main", [x]):
         with bb.dataflow():
             lv0 = bb.emit(relax.op.clip(x, 0, 4))
@@ -126,13 +168,6 @@ def test_clip():
             gv0 = bb.emit_output(lv0)
             gv1 = bb.emit_output(lv1)
         bb.emit_func_output([gv0, gv1])
-    """
-    with bb.function("main", [x]):
-        with bb.dataflow():
-            lv0 = bb.emit(relax.op.clip(x, 0, 4))
-            gv0 = bb.emit_output(lv0)
-        bb.emit_func_output(gv0)
-    mod = bb.get()
 
     x_data = tvm.nd.array(np.random.rand(10, 10).astype("float32"), dev)
     verify(mod, [x_data])
@@ -217,7 +252,6 @@ def test_conv2d():
             gv = bb.emit_output(lv0)
         bb.emit_func_output(gv)
     mod = bb.get()
-    mod.show()
     x_data = tvm.nd.array(np.random.rand(1, 3, 224, 224).astype("float32"), dev)
     verify(mod, [x_data])
 
@@ -254,19 +288,25 @@ def test_subgraph():
     y_data = tvm.nd.array(np.random.rand(10, 10).astype("float32"), dev)
     verify(mod, [x_data, y_data])
 
+    x = relax.Var("x", relax.TensorStructInfo([10, 10], "float32"))
+    y = relax.Var("y", relax.TensorStructInfo([10, 10], "float32"))
+    bb = relax.BlockBuilder()
+    with bb.function("main", [x, y]):
+        with bb.dataflow():
+            # multiply+relu will be offloaded to coreml
+            lv0 = bb.emit(relax.op.multiply(x, y))
+            lv1 = bb.emit(relax.op.nn.relu(lv0))
+            # gelu wouldn't be offloaded to coreml
+            lv2 = bb.emit(relax.op.nn.gelu(lv1))
+            # relu would be offloaded to coreml
+            lv3 = bb.emit(relax.op.nn.relu(lv2))
+            gv = bb.emit_output(lv3)
+        bb.emit_func_output(gv)
+    mod = bb.get()
+    x_data = tvm.nd.array(np.random.rand(10, 10).astype("float32"), dev)
+    y_data = tvm.nd.array(np.random.rand(10, 10).astype("float32"), dev)
+    verify(mod, [x_data, y_data])
+
 
 if __name__ == "__main__":
-    """
-    test_add()
-    test_multiply()
-    test_relu()
-    test_clip()
-    test_softmax()
-    test_global_avg_pool2d()
-    test_conv2d()
-    test_expand_dims()
-    test_subgraph()
-    """
-    # test_softmax()
-    test_add_const()
-    # pytest.main([__file__])
+    pytest.main([__file__])

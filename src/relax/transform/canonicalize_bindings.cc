@@ -28,7 +28,7 @@
 #include <tvm/relax/expr_functor.h>
 #include <tvm/relax/struct_info.h>
 #include <tvm/relax/transform.h>
-
+#include <tvm/relax/utils.h>
 namespace tvm {
 namespace relax {
 
@@ -111,7 +111,7 @@ class BindingCanonicalizer : public ExprMutator {
                                                   return tvm::StructuralEqual()(lhs, rhs);
                                                 });
     bool var_to_dataflow = (!v.as<DataflowVarNode>() && parent_var.as<DataflowVarNode>());
-    return !annotations_differ && !var_to_dataflow;
+    return !annotations_differ; // && !var_to_dataflow;
   }
 };
 

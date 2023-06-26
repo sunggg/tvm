@@ -24,9 +24,8 @@ import shutil
 
 import tvm._ffi
 from ...expr_functor import PyExprVisitor, visitor
-from tvm.contrib import xcode, coreml_runtime
+from tvm.contrib import coreml_runtime
 from tvm.contrib.xcode import compile_coreml
-from typing import List
 import tvm
 from tvm.relax import transform
 from tvm.relax.struct_info import TensorStructInfo, PrimStructInfo
@@ -43,21 +42,115 @@ from tvm.relax.expr import (
     Constant,
 )
 from tvm.relax.dpl.pattern import is_op, wildcard
-
+from tvm.relax.transform import PatternCheckContext
 from ..pattern_registry import get_patterns_with_prefix, register_patterns
+from ..patterns import make_matmul_pattern
+
+
+def _check_default(context: PatternCheckContext) -> bool:
+    return True
+
+
+def default_binary_patterns(op_name: str):
+    """
+    Returns a list of binary op patterns in coreML BYOC backend.
+    """
+
+    def _make_binary_pattern():
+        lhs = wildcard()
+        rhs = wildcard()
+        out = is_op("relax." + op_name)(lhs, rhs)
+        annotations = {"lhs": lhs, "rhs": rhs, "root": out}
+        return out, annotations
+
+    def _binary_pattern(pattern_name):
+        return (pattern_name, *_make_binary_pattern(), _check_default)
+
+    return [_binary_pattern("coreml." + op_name)]
+
+
+def default_unary_patterns(op_name: str):
+    """
+    Returns a list of unary op patterns in coreML BYOC backend.
+    """
+
+    def _make_unary_pattern():
+        lhs = wildcard()
+        out = is_op("relax." + op_name)(lhs)
+        annotations = {"lhs": lhs, "root": out}
+        return out, annotations
+
+    def _unary_pattern(pattern_name):
+        return (pattern_name, *_make_unary_pattern(), _check_default)
+
+    return [_unary_pattern("coreml." + op_name)]
+
+
+def conv2d_patterns():
+    """
+    Returns a list of conv2d patterns in coreML BYOC backend.
+    """
+
+    def _make_conv2d_pattern():
+        lhs = wildcard()
+        rhs = wildcard()
+        out = is_op("relax.nn.conv2d")(lhs, rhs)
+        annotations = {"lhs": lhs, "rhs": rhs, "root": out}
+        return out, annotations
+
+    def _conv2d_pattern(pattern_name):
+        return (pattern_name, *_make_conv2d_pattern(), _check_default)
+
+    return [_conv2d_pattern("coreml.nn.conv2d")]
+
+
+def matmul_patterns():
+    """
+    Returns a list of all matmul patterns in coreML BYOC backend.
+    """
+
+    def _matmul_pattern(pattern_name):
+        return (
+            pattern_name,
+            *make_matmul_pattern(),
+            _check_default,
+        )
+
+    return [_matmul_pattern("coreml.matmul")]
+
+
+def clip_patterns():
+    """
+    Returns a list of clip patterns in coreML BYOC backend.
+    """
+
+    def _make_clip_pattern():
+        arg0 = wildcard()
+        arg1 = wildcard()
+        arg2 = wildcard()
+        out = is_op("relax.clip")(arg0, arg1, arg2)
+        annotations = {"arg0": arg0, "arg1": arg1, "arg2": arg2, "root": out}
+        return out, annotations
+
+    def _conv2d_pattern(pattern_name):
+        return (pattern_name, *_make_clip_pattern(), _check_default)
+
+    return [_conv2d_pattern("coreml.clip")]
+
 
 register_patterns(
     [
-        ("coreml.add", is_op("relax.add")(wildcard(), wildcard())),
-        ("coreml.multiply", is_op("relax.multiply")(wildcard(), wildcard())),
-        ("coreml.clip", is_op("relax.clip")(wildcard(), wildcard(), wildcard())),
-        ("coreml.expand_dims", is_op("relax.expand_dims")(wildcard())),
-        ("coreml.nn.relu", is_op("relax.nn.relu")(wildcard())),
+        *default_binary_patterns(op_name="add"),
+        *default_binary_patterns(op_name="multiply"),
+        *default_unary_patterns(op_name="nn.softmax"),
+        *default_unary_patterns(op_name="nn.relu"),
+        *default_unary_patterns(op_name="expand_dims"),
+        *default_unary_patterns(op_name="nn.avg_pool2d"),
+        *conv2d_patterns(),
+        *clip_patterns(),
+        *matmul_patterns()
         # TODO(@tvm-team): enable when it is implemented
         # ("coreml.nn.batch_flatten", is_op("relax.nn.batch_flatten")(wildcard())),
-        ("coreml.nn.softmax", is_op("relax.nn.softmax")(wildcard())),
-        ("coreml.nn.avg_pool2d", is_op("relax.nn.avg_pool2d")(wildcard())),
-        ("coreml.nn.conv2d", is_op("relax.nn.conv2d")(wildcard(), wildcard())),
     ]
 )
 
@@ -79,15 +172,13 @@ def partition_for_coreml(mod):
     """
 
     patterns = get_patterns_with_prefix("coreml")
-    # mod = transform.FuseOpsByPattern(patterns, bind_constants=True, annotate_codegen=True)(mod)
     mod = transform.FuseOpsByPattern(patterns, bind_constants=True, annotate_codegen=False)(mod)
     mod = transform.MergeCompositeFunctions()(mod)
     return mod
 
 
 # Codegen for coreml
-
-
+# API reference: https://apple.github.io/coremltools/source/coremltools.models.neural_network.html
 def _convert_add(builder, name, inputs, outputs, args, attrs):
     builder.add_elementwise(name=name, input_names=inputs, output_name=outputs[0], mode="ADD")
 
@@ -96,13 +187,21 @@ def _convert_multiply(builder, name, inputs, outputs, args, attrs):
     builder.add_elementwise(name=name, input_names=inputs, output_name=outputs[0], mode="MULTIPLY")
 
 
+def _convert_matmul(builder, name, inputs, outputs, args, attrs):
+    builder.add_batched_mat_mul(
+        name=name,
+        input_names=inputs,
+        output_name=outputs[0],
+    )
+
+
 def _convert_clip(builder, name, inputs, outputs, args, attrs):
     builder.add_clip(
         name=name,
         input_name=inputs[0],
         output_name=outputs[0],
-        min_value=inputs[1].value.value,
-        max_value=inputs[2].value.value,
+        min_value=inputs[1],
+        max_value=inputs[2],
     )
 
 
@@ -128,11 +227,8 @@ def _convert_softmax(builder, name, inputs, outputs, args, attrs):
 
 
 def _convert_conv2d(builder, name, inputs, outputs, args, attrs):
-    weight = inputs[1].data.numpy()
-    if attrs["kernel_layout"] == "OIHW":
-        # convert to 'HWIO'
-        weight = weight.transpose([2, 3, 1, 0])
-    kh, kw, kc, oc = weight.shape
+    weight = args[1].data.numpy()
+    oc, kc, kh, kw = weight.shape
 
     builder.add_convolution(
         name=name,
@@ -174,6 +270,7 @@ def _convert_avg_pool2d(builder, name, inputs, outputs, args, attrs):
 _convert_map = {
     "add": _convert_add,
     "multiply": _convert_multiply,
+    "matmul": _convert_matmul,
     "clip": _convert_clip,
     "expand_dims": _convert_expand_dims,
     "nn.relu": _convert_relu,
@@ -186,10 +283,11 @@ _convert_map = {
 
 @visitor
 class CallNodeInfoCollector(PyExprVisitor):
-    def __init__(self):
+    def __init__(self, op_name):
         self.primvals = []
         self.attrs = []
         self.consts = []
+        self.op_name = op_name
 
     def visit_call_(self, call: Call) -> None:
         self.attrs.append(call.attrs)
@@ -217,6 +315,7 @@ class CodegenCoreML(PyExprVisitor):
         self.model_name = model_name
         self.function = function
         self.out_map = {}
+        self.const_map = {}  # (buffer name, object)
         self.model_inputs_ = []
         self.buf_idx_ = 0
 
@@ -248,9 +347,10 @@ class CodegenCoreML(PyExprVisitor):
         ]
         self.builder = NeuralNetworkBuilder(inputs, outputs, disable_rank5_shape_mapping=True)
 
+    """
     def visit_constant_(self, const):
         output = "buf_" + str(self.buf_idx_)
-        self.builder.add_load_constant_nd(
+        cnst = self.builder.add_load_constant_nd(
             name=output,
             output_name=output,
             constant_value=const.data.numpy(),
@@ -258,6 +358,8 @@ class CodegenCoreML(PyExprVisitor):
         )
         self.buf_idx_ = self.buf_idx_ + 1
         self.out_map[const] = [output]
+        self.const_map[output] = [cnst]
+    """
 
     def visit_function_(self, op) -> None:
         for var in op.params:
@@ -287,15 +389,24 @@ class CodegenCoreML(PyExprVisitor):
         assert call.op in self.var2val
         func = self.var2val[call.op]
 
+        assert "Composite" in func.attrs, "Only composite functions are supported."
+        composite_name = func.attrs["Composite"]
+
+        # Get the op name and remove "relax." prefix.
+        op_name = composite_name[7:]
+
         inputs = []
+        args = []
         for arg in call.args:
+            args.append(arg)
             super().visit_expr(arg)
             for out in self.out_map[arg]:
                 inputs.append(out)
 
-        primvals, attrs, consts = CallNodeInfoCollector().collect(func.body)
+        primvals, attrs, consts = CallNodeInfoCollector(op_name).collect(func.body)
         for arg in primvals:
-            inputs.append(arg)
+            args.append(arg)
+            inputs.append(arg.value.value)
 
         for arg in consts:
             output = "buf_" + str(self.buf_idx_)
@@ -308,18 +419,15 @@ class CodegenCoreML(PyExprVisitor):
             self.buf_idx_ = self.buf_idx_ + 1
             self.out_map[arg] = [output]
             inputs.append(output)
+            args.append(arg)
 
         print("Visiting...", call.op, " // ", inputs)
-        assert "Composite" in func.attrs, "Only composite functions are supported."
-        composite_name = func.attrs["Composite"]
 
-        outputs = ["buf_" + str(self.buf_idx_)]
-        # Get the op name and remove "relax." prefix.
-        op_name = composite_name[7:]
         layer_name = op_name + "_" + str(self.buf_idx_)
 
         assert op_name in _convert_map, "{} is not supported".format(op_name)
-        _convert_map[op_name](self.builder, layer_name, inputs, outputs, call.args, attrs[0])
+        outputs = ["buf_" + str(self.buf_idx_)]
+        _convert_map[op_name](self.builder, layer_name, inputs, outputs, args, attrs[0])
         self.buf_idx_ = self.buf_idx_ + 1
         self.out_map[self.cur_binding_var] = outputs
 

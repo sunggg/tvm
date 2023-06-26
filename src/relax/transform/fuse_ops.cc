@@ -1086,7 +1086,6 @@ class CompositeFunctionAnnotator : public ExprMutator {
 
   IRModule Run() {
     auto mod = builder_->GetContextIRModule();
-    LOG(INFO) << mod;
     auto all_functions = mod->functions;
     for (const auto& entry : all_functions) {
       if (const auto* func = entry.second.as<FunctionNode>()) {
@@ -1190,6 +1189,7 @@ IRModule FuseOpsByPattern(const tvm::Array<transform::FusionPattern>& patterns, 
     }
     mod = MakeGroupedFunctions(mod, group_map, /*lift_constants*/ !bind_constants);
   }
+
   if (annotate_codegen) {
     return CompositeFunctionAnnotator(mod).Run();
   }

@@ -60,6 +60,7 @@
 #include <tvm/tir/function.h>
 
 #include "../../support/arena.h"
+#include <tvm/relax/binding_rewrite.h>
 #include "utils.h"
 
 namespace tvm {
@@ -343,9 +344,16 @@ IRModule MergeCompositeFunctions(IRModule mod) {
       to_update.emplace_back(gvar, new_func);
     }
   }
+  
   for (const auto& [gvar, func] : to_update) {
-    new_mod->Update(gvar, Downcast<Function>(ToNonDataflow(func)));
+    Function new_func = Downcast<Function>(CanonicalizeBindings(func));
+    new_func = RemoveAllUnused(new_func);
+    new_mod->Update(gvar, Downcast<Function>(ToNonDataflow(new_func)));
+    //new_mod->Update(gvar, func);
   }
+
+  LOG(INFO) << new_mod;
+  
   // TODO(@tvm-team): Implicit pass dependency. Revisit when we have a better way to handle this.
   return DeadCodeElimination(new_mod, {"main"});
 }
