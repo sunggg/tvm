@@ -480,6 +480,10 @@ Expr ExprMutatorBase::VisitExpr_(const PrimValueNode* op) {
   return PrimValue(value, op->span);
 }
 
+Expr ExprMutatorBase::VisitExpr_(const PrimExprNode* op) {
+  //return GetRef<Expr>(op);
+}
+
 Expr ExprMutatorBase::VisitExpr_(const StringImmNode* op) { return GetRef<Expr>(op); }
 
 Expr ExprMutatorBase::VisitExpr_(const DataTypeImmNode* op) { return GetRef<Expr>(op); }

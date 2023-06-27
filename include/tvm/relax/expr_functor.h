@@ -341,7 +341,7 @@ class ExprMutatorBase : public ExprFunctor<Expr(const Expr&)> {
   Expr VisitExpr_(const OpNode* op) override;
   Expr VisitExpr_(const TupleGetItemNode* op) override;
   Expr VisitExpr_(const PrimValueNode* op) override;
-  //Expr VisitExpr_(const PrimExprNode* op) override;
+  Expr VisitExpr_(const PrimExprNode* op) override;
   Expr VisitExpr_(const StringImmNode* op) override;
   Expr VisitExpr_(const DataTypeImmNode* op) override;
 
