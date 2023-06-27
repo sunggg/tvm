@@ -42,6 +42,7 @@ from .expr import (
     If,
     MatchCast,
     PrimValue,
+    PrimExpr,
     SeqExpr,
     ShapeExpr,
     Span,
@@ -161,6 +162,8 @@ class ExprFunctor:
             ret = self.visit_tuple_getitem_(expr)
         elif isinstance(expr, PrimValue):
             ret = self.visit_prim_value_(expr)
+        elif isinstance(expr, PrimExpr):
+            ret = self.visit_prim_expr_(expr)
         elif isinstance(expr, StringImm):
             ret = self.visit_string_imm_(expr)
         elif isinstance(expr, DataTypeImm):
@@ -210,6 +213,9 @@ class ExprFunctor:
         raise NotImplementedError()
 
     def visit_prim_value_(self, op: PrimValue):
+        raise NotImplementedError()
+
+    def visit_prim_expr_(self, op: PrimExpr):
         raise NotImplementedError()
 
     def visit_string_imm_(self, op: StringImm):
@@ -289,6 +295,7 @@ class _PyExprVisitor(Object):
         f_visit_op_: Callable = None,
         f_visit_tuple_getitem_: Callable = None,
         f_visit_prim_value_: Callable = None,
+        f_visit_prim_expr_: Callable = None,
         f_visit_string_imm_: Callable = None,
         f_visit_data_type_imm_: Callable = None,
         f_visit_binding: Callable = None,
@@ -321,6 +328,7 @@ class _PyExprVisitor(Object):
             f_visit_op_,
             f_visit_tuple_getitem_,
             f_visit_prim_value_,
+            f_visit_prim_expr_,
             f_visit_string_imm_,
             f_visit_data_type_imm_,
             f_visit_binding,
@@ -412,6 +420,7 @@ class PyExprVisitor:
             "visit_op_",
             "visit_tuple_getitem_",
             "visit_prim_value_",
+            "visit_prim_expr_",
             "visit_string_imm_",
             "visit_data_type_imm_",
             "visit_binding",
@@ -660,6 +669,19 @@ class PyExprVisitor:
         # Using self._outer() to ref _PyExprVisitor
         return _ffi_api.ExprVisitorVisitExpr(self._outer(), op)  # type: ignore
 
+    def visit_prim_expr_(self, op: PrimExpr) -> None:
+        """Visit PrimExpr.
+        Users can customized this function to overwrite VisitExpr_(const PrimExprNode* op)
+        on the C++ side.
+
+        Parameters
+        ----------
+        op : PrimExpr
+            The PrimValue to be visited.
+        """
+        # Using self._outer() to ref _PyExprVisitor
+        return _ffi_api.ExprVisitorVisitExpr(self._outer(), op)  # type: ignore
+
     def visit_string_imm_(self, op: StringImm) -> None:
         """Visit StringImm.
         Users can customized this function to overwrite VisitExpr_(const StringImmNode* op)
@@ -806,6 +828,7 @@ class _PyExprMutator(Object):
         f_visit_op_: Callable = None,
         f_visit_tuple_getitem_: Callable = None,
         f_visit_prim_value_: Callable = None,
+        f_visit_prim_expr_: Callable = None,
         f_visit_string_imm_: Callable = None,
         f_visit_data_type_imm_: Callable = None,
         f_visit_binding: Callable = None,
@@ -839,6 +862,7 @@ class _PyExprMutator(Object):
             f_visit_op_,
             f_visit_tuple_getitem_,
             f_visit_prim_value_,
+            f_visit_prim_expr_,
             f_visit_string_imm_,
             f_visit_data_type_imm_,
             f_visit_binding,
@@ -945,6 +969,7 @@ class PyExprMutator:
             "visit_if_",
             "visit_op_",
             "visit_tuple_getitem_",
+            "visit_prim_expr_",
             "visit_prim_value_",
             "visit_string_imm_",
             "visit_data_type_imm_",
@@ -1274,6 +1299,24 @@ class PyExprMutator:
         ----------
         op : PrimValue
             The PrimValue to be visited.
+
+        Returns
+        -------
+        result : Expr
+            The Expr after transformation
+        """
+        # Using self._outer() to ref _PyExprMutator
+        return _ffi_api.ExprMutatorVisitExpr(self._outer(), op)  # type: ignore
+
+    def visit_prim_expr_(self, op: PrimExpr) -> Expr:
+        """Visit PrimExpr.
+        Users can customized this function to overwrite VisitExpr_(const PrimExprNode* op)
+        on the C++ side.
+
+        Parameters
+        ----------
+        op : PrimExpr
+            The PrimExpr to be visited.
 
         Returns
         -------

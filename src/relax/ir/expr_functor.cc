@@ -36,6 +36,7 @@
         self->VisitBinding_(binding, static_cast<const OP*>(n.get()));     \
       });
 
+
 #define RELAX_VAR_BINDING_DISPATCH_IMPL(Type)                                        \
   Type::VisitBindingVTable Type::InitVisitBindingVTable() {                          \
     VisitBindingVTable vtable;                                                       \
@@ -228,6 +229,8 @@ void ExprVisitor::VisitExpr_(const PrimValueNode* op) {
   this->VisitSpan(op->span);
 }
 
+void ExprVisitor::VisitExpr_(const PrimExprNode* op) {}
+
 void ExprVisitor::VisitExpr_(const StringImmNode* op) { this->VisitSpan(op->span); }
 
 void ExprVisitor::VisitExpr_(const DataTypeImmNode* op) { this->VisitSpan(op->span); }
@@ -252,6 +255,7 @@ RELAX_EXPR_VISITOR_VISIT_BINDING_IMPL(IfNode);
 RELAX_EXPR_VISITOR_VISIT_BINDING_IMPL(OpNode);
 RELAX_EXPR_VISITOR_VISIT_BINDING_IMPL(TupleGetItemNode);
 RELAX_EXPR_VISITOR_VISIT_BINDING_IMPL(PrimValueNode);
+RELAX_EXPR_VISITOR_VISIT_BINDING_IMPL(PrimExprNode);
 RELAX_EXPR_VISITOR_VISIT_BINDING_IMPL(StringImmNode);
 RELAX_EXPR_VISITOR_VISIT_BINDING_IMPL(DataTypeImmNode);
 
@@ -648,6 +652,7 @@ RELAX_EXPR_MUTATOR_VISIT_BINDING_IMPL(IfNode);
 RELAX_EXPR_MUTATOR_VISIT_BINDING_IMPL(OpNode);
 RELAX_EXPR_MUTATOR_VISIT_BINDING_IMPL(TupleGetItemNode);
 RELAX_EXPR_MUTATOR_VISIT_BINDING_IMPL(PrimValueNode);
+//RELAX_EXPR_MUTATOR_VISIT_BINDING_IMPL(PrimExprNode);
 RELAX_EXPR_MUTATOR_VISIT_BINDING_IMPL(StringImmNode);
 RELAX_EXPR_MUTATOR_VISIT_BINDING_IMPL(DataTypeImmNode);
 

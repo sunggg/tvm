@@ -65,6 +65,8 @@ class PyExprVisitorNode : public Object, public ExprVisitor {
   PackedFunc f_visit_tuple_getitem_{nullptr};
   /*! \brief The packed function to the `VisitExpr_(const PrimValueNode* op)` function. */
   PackedFunc f_visit_prim_value_{nullptr};
+  /*! \brief The packed function to the `VisitExpr_(const PrimExprNode* op)` function. */
+  PackedFunc f_visit_prim_expr_{nullptr};
   /*! \brief The packed function to the `VisitExpr_(const StringImmNode* op)` function. */
   PackedFunc f_visit_string_imm_{nullptr};
   /*! \brief The packed function to the `VisitExpr_(const DataTypeImmNode* op)` function. */
@@ -159,6 +161,7 @@ class PyExprVisitorNode : public Object, public ExprVisitor {
     PY_EXPR_VISITOR_DISPATCH(OpNode, f_visit_op_);
     PY_EXPR_VISITOR_DISPATCH(TupleGetItemNode, f_visit_tuple_getitem_);
     PY_EXPR_VISITOR_DISPATCH(PrimValueNode, f_visit_prim_value_);
+    PY_EXPR_VISITOR_DISPATCH(PrimExprNode, f_visit_prim_expr_);
     PY_EXPR_VISITOR_DISPATCH(StringImmNode, f_visit_string_imm_);
     PY_EXPR_VISITOR_DISPATCH(DataTypeImmNode, f_visit_data_type_imm_);
     return vtable;
@@ -190,6 +193,7 @@ class PyExprVisitor : public ObjectRef {
    * \param f_visit_op_ The packed function of `VisitExpr_(const OpNode* op)`.
    * \param f_visit_tuple_getitem_ The packed function of `VisitExpr_(const TupleGetItemNode* op)`.
    * \param f_visit_prim_value_ The packed function of `VisitExpr_(const PrimValueNode* op)`.
+   * \param f_visit_prim_expr_ The packed function of `VisitExpr_(const PrimExprNode* op)`.
    * \param f_visit_string_imm_ The packed function of `VisitExpr_(const StringImmNode* op)`.
    * \param f_visit_data_type_imm_ The packed function of `VisitExpr_(const DataTypeImmNode* op)`.
    * \param f_visit_binding The packed function of `VisitBinding(const Binding& binding)`.
@@ -215,7 +219,7 @@ class PyExprVisitor : public ObjectRef {
       PackedFunc f_visit_var_, PackedFunc f_visit_dataflow_var_, PackedFunc f_visit_shape_expr_,
       PackedFunc f_visit_extern_func_, PackedFunc f_visit_global_var_, PackedFunc f_visit_function_,
       PackedFunc f_visit_call_, PackedFunc f_visit_seq_expr_, PackedFunc f_visit_if_,
-      PackedFunc f_visit_op_, PackedFunc f_visit_tuple_getitem_, PackedFunc f_visit_prim_value_,
+      PackedFunc f_visit_op_, PackedFunc f_visit_tuple_getitem_, PackedFunc f_visit_prim_value_, PackedFunc f_visit_prim_expr_,
       PackedFunc f_visit_string_imm_, PackedFunc f_visit_data_type_imm_, PackedFunc f_visit_binding,
       PackedFunc f_visit_var_binding_, PackedFunc f_visit_match_cast_,
       PackedFunc f_visit_binding_block, PackedFunc f_visit_binding_block_,
@@ -241,6 +245,7 @@ class PyExprVisitor : public ObjectRef {
     n->f_visit_op_ = f_visit_op_;
     n->f_visit_tuple_getitem_ = f_visit_tuple_getitem_;
     n->f_visit_prim_value_ = f_visit_prim_value_;
+    n->f_visit_prim_expr_ = f_visit_prim_expr_;
     n->f_visit_string_imm_ = f_visit_string_imm_;
     n->f_visit_data_type_imm_ = f_visit_data_type_imm_;
     n->f_visit_var_binding_ = f_visit_var_binding_;
@@ -294,6 +299,8 @@ class PyExprMutatorNode : public Object, public ExprMutator {
   PackedFunc f_visit_tuple_getitem_{nullptr};
   /*! \brief The packed function to the `VisitExpr_(const PrimValueNode* op)` function. */
   PackedFunc f_visit_prim_value_{nullptr};
+  /*! \brief The packed function to the `VisitExpr_(const PrimExprNode* op)` function. */
+  PackedFunc f_visit_prim_expr_{nullptr};
   /*! \brief The packed function to the `VisitExpr_(const StringImmNode* op)` function. */
   PackedFunc f_visit_string_imm_{nullptr};
   /*! \brief The packed function to the `VisitExpr_(const DataTypeImmNode* op)` function. */
@@ -412,6 +419,7 @@ class PyExprMutatorNode : public Object, public ExprMutator {
     PY_EXPR_MUTATOR_DISPATCH(OpNode, f_visit_op_);
     PY_EXPR_MUTATOR_DISPATCH(TupleGetItemNode, f_visit_tuple_getitem_);
     PY_EXPR_MUTATOR_DISPATCH(PrimValueNode, f_visit_prim_value_);
+    //PY_EXPR_MUTATOR_DISPATCH(PrimExprNode, f_visit_prim_expr_);
     PY_EXPR_MUTATOR_DISPATCH(StringImmNode, f_visit_string_imm_);
     PY_EXPR_MUTATOR_DISPATCH(DataTypeImmNode, f_visit_data_type_imm_);
     return vtable;
@@ -435,6 +443,7 @@ class PyExprMutatorNode : public Object, public ExprMutator {
     PY_EXPR_MUTATOR_VISIT_EXPR_POST_ORDER_DISPATCH(OpNode);
     PY_EXPR_MUTATOR_VISIT_EXPR_POST_ORDER_DISPATCH(TupleGetItemNode);
     PY_EXPR_MUTATOR_VISIT_EXPR_POST_ORDER_DISPATCH(PrimValueNode);
+    //PY_EXPR_MUTATOR_VISIT_EXPR_POST_ORDER_DISPATCH(PrimExprNode);
     PY_EXPR_MUTATOR_VISIT_EXPR_POST_ORDER_DISPATCH(StringImmNode);
     PY_EXPR_MUTATOR_VISIT_EXPR_POST_ORDER_DISPATCH(DataTypeImmNode);
     return post_order_vtable;
@@ -466,6 +475,7 @@ class PyExprMutator : public ObjectRef {
    * \param f_visit_op_ The packed function of `VisitExpr_(const OpNode* op)`.
    * \param f_visit_tuple_getitem_ The packed function of `VisitExpr_(const TupleGetItemNode* op)`.
    * \param f_visit_prim_value_ The packed function of `VisitExpr_(const PrimValueNode* op)`.
+   * \param f_visit_prim_expr_ The packed function of `VisitExpr_(const PrimExprNode* op)`.
    * \param f_visit_string_imm_ The packed function of `VisitExpr_(const StringImmNode* op)`.
    * \param f_visit_data_type_imm_ The packed function of `VisitExpr_(const DataTypeImmNode* op)`.
    * \param f_visit_binding The packed function of `VisitBinding(const Binding& binding)`.
@@ -492,7 +502,8 @@ class PyExprMutator : public ObjectRef {
       PackedFunc f_visit_shape_expr_, PackedFunc f_visit_extern_func_,
       PackedFunc f_visit_global_var_, PackedFunc f_visit_function_, PackedFunc f_visit_call_,
       PackedFunc f_visit_seq_expr_, PackedFunc f_visit_if_, PackedFunc f_visit_op_,
-      PackedFunc f_visit_tuple_getitem_, PackedFunc f_visit_prim_value_,
+      PackedFunc f_visit_tuple_getitem_, PackedFunc f_visit_prim_value_, 
+      PackedFunc f_visit_prim_expr_,
       PackedFunc f_visit_string_imm_, PackedFunc f_visit_data_type_imm_, PackedFunc f_visit_binding,
       PackedFunc f_visit_var_binding_, PackedFunc f_visit_match_cast_,
       PackedFunc f_visit_binding_block, PackedFunc f_visit_binding_block_,
@@ -515,6 +526,7 @@ class PyExprMutator : public ObjectRef {
     n->f_visit_op_ = f_visit_op_;
     n->f_visit_tuple_getitem_ = f_visit_tuple_getitem_;
     n->f_visit_prim_value_ = f_visit_prim_value_;
+    n->f_visit_prim_expr_ = f_visit_prim_expr_;
     n->f_visit_string_imm_ = f_visit_string_imm_;
     n->f_visit_data_type_imm_ = f_visit_data_type_imm_;
     n->f_visit_binding = f_visit_binding;
