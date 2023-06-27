@@ -461,7 +461,7 @@ class ExprMutator : public ExprMutatorBase {
   virtual void VisitBinding_(const VarBindingNode* binding, const OpNode* val);
   virtual void VisitBinding_(const VarBindingNode* binding, const TupleGetItemNode* val);
   virtual void VisitBinding_(const VarBindingNode* binding, const PrimValueNode* val);
-  //virtual void VisitBinding_(const VarBindingNode* binding, const PrimExprNode* val);
+  virtual void VisitBinding_(const VarBindingNode* binding, const PrimExprNode* val);
   virtual void VisitBinding_(const VarBindingNode* binding, const StringImmNode* val);
   virtual void VisitBinding_(const VarBindingNode* binding, const DataTypeImmNode* val);
   /*!

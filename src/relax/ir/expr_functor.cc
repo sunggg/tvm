@@ -54,6 +54,7 @@
     RELAX_VISIT_BINDING_DISPATCH(OpNode);                                            \
     RELAX_VISIT_BINDING_DISPATCH(TupleGetItemNode);                                  \
     RELAX_VISIT_BINDING_DISPATCH(PrimValueNode);                                     \
+    RELAX_VISIT_BINDING_DISPATCH(PrimExprNode);                                     \
     RELAX_VISIT_BINDING_DISPATCH(StringImmNode);                                     \
     RELAX_VISIT_BINDING_DISPATCH(DataTypeImmNode);                                   \
     return vtable;                                                                   \
@@ -652,7 +653,7 @@ RELAX_EXPR_MUTATOR_VISIT_BINDING_IMPL(IfNode);
 RELAX_EXPR_MUTATOR_VISIT_BINDING_IMPL(OpNode);
 RELAX_EXPR_MUTATOR_VISIT_BINDING_IMPL(TupleGetItemNode);
 RELAX_EXPR_MUTATOR_VISIT_BINDING_IMPL(PrimValueNode);
-//RELAX_EXPR_MUTATOR_VISIT_BINDING_IMPL(PrimExprNode);
+RELAX_EXPR_MUTATOR_VISIT_BINDING_IMPL(PrimExprNode);
 RELAX_EXPR_MUTATOR_VISIT_BINDING_IMPL(StringImmNode);
 RELAX_EXPR_MUTATOR_VISIT_BINDING_IMPL(DataTypeImmNode);
 
