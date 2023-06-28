@@ -22,22 +22,10 @@ import tvm.testing
 from tvm import relax
 from tvm.script import relax as R
 from tvm.script import tir as T
-from tvm import ir
-from tvm.ir.transform import PassContext
-from tvm.ir.module import IRModule
-from tvm.relax import PyExprMutator
 
-
-@ir.transform.module_pass(opt_level=0)
-def MockModulePass(mod: IRModule, ctx: PassContext) -> IRModule:
-    @relax.expr_functor.mutator
-    class SymVarBinder(PyExprMutator):
-        def visit_prim_expr_(self, op: relax.expr.PrimExpr):
-            print(op)
-            return op
-
-    SymVarBinder(mod).visit_expr(mod["main"])
-    return mod
+# TODO:
+# 1. implement in C++
+# 2. Python-side ExprMutator does not expose structinfo mutation. Extend it.
 
 
 def test_bind_symbolic_vars():
@@ -47,8 +35,8 @@ def test_bind_symbolic_vars():
         def main(
             x: R.Tensor(("batch", "m"), dtype="float32"),
             w0: R.Tensor(("n", "m"), dtype="float32"),
-            b0: R.Tensor(("n",), dtype="float32"),
-            w1: R.Tensor(("k", "n"), dtype="float32"),
+            b0: R.Tensor(("n+1",), dtype="float32"),
+            w1: R.Tensor(("k", 10), dtype="float32"),
             b1: R.Tensor(("k",), dtype="float32"),
         ) -> R.Tensor(("batch", "k"), dtype="float32"):
             batch = T.Var("batch", "int64")
@@ -65,29 +53,16 @@ def test_bind_symbolic_vars():
                 R.output(out)
             return out
 
-    Before.show()
-    mod = MockModulePass(Before)
-    # mod = relax.transform.BindParams("main", params_dict)(Before)
-    # mod.show()
-    """
+    # Before.show()
+    symvar_map = {"batch": 1, "k": 3}
+    target_func_name = "main"
+    mod = relax.transform.BindSymVars(target_func_name, symvar_map)(Before)
+    mod.show()
+
     # Since it contains ConstantNode, it's hard to check with structural equality.
-    func = mod["main"]
-    assert len(func.params) == 1
-    batch = func.params[0].struct_info.shape[0]
-    tvm.ir.assert_structural_equal(
-        func.params[0].struct_info, relax.TensorStructInfo((batch, 4), "float32")
-    )
-    tvm.ir.assert_structural_equal(
-        func.ret_struct_info, relax.TensorStructInfo((batch, 8), "float32")
-    )
-    bindings = func.body.blocks[0].bindings
-    tvm.ir.assert_structural_equal(
-        bindings[0].var.struct_info, relax.TensorStructInfo((batch, 6), "float32")
-    )
-    tvm.ir.assert_structural_equal(
-        bindings[1].var.struct_info, relax.TensorStructInfo((batch, 8), "float32")
-    )
-    """
+    func = mod[target_func_name]
+    batch = int(func.params[0].struct_info.shape[0])
+    assert symvar_map["batch"] == batch
 
 
 if __name__ == "__main__":

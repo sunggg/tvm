@@ -720,6 +720,8 @@ TVM_DLL Pass InjectSoftwarePipeline();
 
 TVM_DLL Pass BindParams(const Array<runtime::NDArray>& constants);
 
+TVM_DLL Pass BindSymVars(String func_name, Map<String, Integer> sym_val_map);
+
 /*!
  * \brief Pass to collect tir non-scalar constants into module's 'Constants' attribute.
  *
