@@ -56,7 +56,7 @@ class JSONRuntimeBase : public ModuleNode {
 
   ~JSONRuntimeBase() override = default;
 
-  const char* type_key() const override { return "json"; }  // May be overridden
+  virtual const char* type_key() const override { return "json"; }  // May be overridden
 
   /*! \brief Get the property of the runtime module .*/
   int GetPropertyMask() const override {

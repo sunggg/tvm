@@ -49,7 +49,7 @@ class CublasJSONRuntime : public JSONRuntimeBase {
 
   void Init(const Array<NDArray>& consts) override {}
 
-  const char* type_key() const override { return "cublas_json"; }  // May be overridden
+  const char* type_key() const final { return "cublas_json"; }  // May be overridden
 
   void Run() override {
     auto* entry_ptr = tvm::contrib::CuBlasLtThreadEntry::ThreadLocal();
