@@ -22,7 +22,8 @@ from tvm import relax
 from tvm.script import ir as I
 from tvm.script import relax as R
 from tvm.script import tir as T
-    
+
+
 def test_bind_tensors():
     @tvm.script.ir_module
     class Before:
@@ -53,16 +54,25 @@ def test_bind_tensors():
     @I.ir_module
     class Expected:
         @R.function
-        def main(x: R.Tensor((1, "m"), dtype="float32"), w0: R.Tensor(("m", "n"), dtype="float32"), w1: R.Tensor((3, 10), dtype="float32")) -> R.Tensor((1, 3), dtype="float32"):
+        def main(
+            x: R.Tensor((1, "m"), dtype="float32"),
+            w0: R.Tensor(("m", "n"), dtype="float32"),
+            w1: R.Tensor((3, 10), dtype="float32"),
+        ) -> R.Tensor((1, 3), dtype="float32"):
             m = T.int64()
             n = T.int64()
             with R.dataflow():
-                lv0 = R.call_dps_packed("test0", (x, w0), out_sinfo=R.Tensor((1, n), dtype="float32"))
-                out = R.call_dps_packed("test1", (lv0, w1), out_sinfo=R.Tensor((1, 3), dtype="float32"))
+                lv0 = R.call_dps_packed(
+                    "test0", (x, w0), out_sinfo=R.Tensor((1, n), dtype="float32")
+                )
+                out = R.call_dps_packed(
+                    "test1", (lv0, w1), out_sinfo=R.Tensor((1, 3), dtype="float32")
+                )
                 R.output(out)
             return out
 
     tvm.ir.assert_structural_equal(After, Expected)
+
 
 def test_bind_shape():
     @tvm.script.ir_module
@@ -90,11 +100,13 @@ def test_bind_shape():
     symvar_map = {"batch": 1, "k": 3}
     target_func_name = "main"
     After = relax.transform.BindSymVars(target_func_name, symvar_map)(Before)
-   
+
     @I.ir_module
     class Expected:
         @R.function
-        def main(x: R.Shape([1, "m"]), w0: R.Shape(["m", "n"]), w1: R.Shape([3, 10])) -> R.Shape([1, 3]):
+        def main(
+            x: R.Shape([1, "m"]), w0: R.Shape(["m", "n"]), w1: R.Shape([3, 10])
+        ) -> R.Shape([1, 3]):
             m = T.int64()
             n = T.int64()
             with R.dataflow():
@@ -104,6 +116,7 @@ def test_bind_shape():
             return out
 
     tvm.ir.assert_structural_equal(After, Expected)
+
 
 def test_arith():
     @tvm.script.ir_module
@@ -120,32 +133,45 @@ def test_arith():
             k = T.Var("k", "int64")
             with R.dataflow():
                 lv0 = R.call_dps_packed(
-                    "test0", (x, w0), out_sinfo=R.Tensor((batch, m+n), dtype="float32")
+                    "test0",
+                    (x, w0),
+                    out_sinfo=R.Tensor((batch, m + n), dtype="float32"),
                 )
                 out = R.call_dps_packed(
-                    "test1", (lv0, w1), out_sinfo=R.Tensor((batch, k+n), dtype="float32")
+                    "test1",
+                    (lv0, w1),
+                    out_sinfo=R.Tensor((batch, k + n), dtype="float32"),
                 )
                 R.output(out)
             return out
 
-    symvar_map = {"batch": 1, "k": 2, "m":3}
+    symvar_map = {"batch": 1, "k": 2, "m": 3}
     target_func_name = "main"
     After = relax.transform.BindSymVars(target_func_name, symvar_map)(Before)
-   
+
     @I.ir_module
     class Expected:
         @R.function
-        def main(x: R.Tensor((1, 2), dtype="float32"), w0: R.Tensor((3, "n"), dtype="float32"), w1: R.Tensor((2, 10), dtype="float32")) -> R.Tensor((1, 6), dtype="float32"):
+        def main(
+            x: R.Tensor((1, 2), dtype="float32"),
+            w0: R.Tensor((3, "n"), dtype="float32"),
+            w1: R.Tensor((2, 10), dtype="float32"),
+        ) -> R.Tensor((1, 6), dtype="float32"):
             n = T.int64()
             with R.dataflow():
-                lv0 = R.call_dps_packed("test0", (x, w0), out_sinfo=R.Tensor((1, 3 + n), dtype="float32"))
-                out = R.call_dps_packed("test1", (lv0, w1), out_sinfo=R.Tensor((1, 2 + n), dtype="float32"))
+                lv0 = R.call_dps_packed(
+                    "test0", (x, w0), out_sinfo=R.Tensor((1, 3 + n), dtype="float32")
+                )
+                out = R.call_dps_packed(
+                    "test1", (lv0, w1), out_sinfo=R.Tensor((1, 2 + n), dtype="float32")
+                )
                 R.output(out)
             return out
 
     tvm.ir.assert_structural_equal(After, Expected)
 
-# TODO: Fix the issue with structural equality for mod, floordiv, floormod. 
+
+# TODO: Fix the issue with structural equality for mod, floordiv, floormod.
 
 if __name__ == "__main__":
-   tvm.testing.main()
+    tvm.testing.main()
