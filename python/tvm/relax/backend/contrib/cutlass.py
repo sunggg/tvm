@@ -84,7 +84,9 @@ def _has_leaking_intermediate_variables(context: PatternCheckContext) -> bool:
     return False
 
 
-def _has_dependency(from_var: Var, to_var: Var, var_usages: Mapping[Var, Sequence[Var]]):
+def _has_dependency(
+    from_var: Var, to_var: Var, var_usages: Mapping[Var, Sequence[Var]]
+):
     if from_var == to_var:
         return True
 
@@ -121,7 +123,9 @@ def _check_residual(root_call: Call, context: PatternCheckContext) -> bool:
             residual = context.value_to_bound_var[residual]
 
         root_var = context.value_to_bound_var[root_call]
-        if _has_dependency(from_var=residual, to_var=root_var, var_usages=context.var_usages):
+        if _has_dependency(
+            from_var=residual, to_var=root_var, var_usages=context.var_usages
+        ):
             # If residual depends on the result of the root call, this cannot be handled by cutlass.
             return False
 
@@ -129,7 +133,9 @@ def _check_residual(root_call: Call, context: PatternCheckContext) -> bool:
         shape2 = residual.struct_info.shape
         out_channel = shape1[-1]
 
-        if not _is_same_shape(shape1, shape2) and not _is_bias_like(shape2, out_channel):
+        if not _is_same_shape(shape1, shape2) and not _is_bias_like(
+            shape2, out_channel
+        ):
             return False
 
     return True
@@ -216,14 +222,14 @@ def matmul_patterns():
         )
 
     return [
-        # _matmul_pattern("cutlass.matmul"),
-        # _matmul_pattern("cutlass.matmul_bias"),
-        # _matmul_pattern("cutlass.matmul_bias_relu"),
-        # _matmul_pattern("cutlass.matmul_bias_gelu"),
-        # _matmul_pattern("cutlass.matmul_transposed"),
-        # _matmul_pattern("cutlass.matmul_transposed_bias"),
-        # _matmul_pattern("cutlass.matmul_transposed_bias_relu"),
-        # _matmul_pattern("cutlass.matmul_transposed_bias_gelu"),
+        _matmul_pattern("cutlass.matmul"),
+        _matmul_pattern("cutlass.matmul_bias"),
+        _matmul_pattern("cutlass.matmul_bias_relu"),
+        _matmul_pattern("cutlass.matmul_bias_gelu"),
+        _matmul_pattern("cutlass.matmul_transposed"),
+        _matmul_pattern("cutlass.matmul_transposed_bias"),
+        _matmul_pattern("cutlass.matmul_transposed_bias_relu"),
+        _matmul_pattern("cutlass.matmul_transposed_bias_gelu"),
     ]
 
 
@@ -279,7 +285,9 @@ def _check_decode_matmul(ctx):
 
         # bias shape needs to be (N,), possibly with additional axes on the front.
         # It can also have the same shape as the output.
-        if not _is_bias_like(bias_shape, N) and not _is_same_shape(out_shape, bias_shape):
+        if not _is_bias_like(bias_shape, N) and not _is_same_shape(
+            out_shape, bias_shape
+        ):
             return False
 
     return True
@@ -377,9 +385,14 @@ def residual_block_patterns():
                     for bin_op in ["relax.add", "relax.multiply"]:
                         patterns.append(
                             (
-                                name + "_residual_" + bin_op.split(".")[-1] + name_postfix,
+                                name
+                                + "_residual_"
+                                + bin_op.split(".")[-1]
+                                + name_postfix,
                                 *make_residual_block_pattern(
-                                    (pat, arg_pat), binary_op=bin_op, activation=activation
+                                    (pat, arg_pat),
+                                    binary_op=bin_op,
+                                    activation=activation,
                                 ),
                                 check,
                             )
@@ -510,7 +523,9 @@ def attention_rewrite_patterns():
             for with_bias in [True, False]:
                 for with_cast in [True, False]:
                     patterns.append(
-                        make_attention_rewrite_pattern(qkv_layout, out_layout, with_bias, with_cast)
+                        make_attention_rewrite_pattern(
+                            qkv_layout, out_layout, with_bias, with_cast
+                        )
                     )
     return patterns
 
@@ -540,12 +555,20 @@ class WorkspaceAnnotator(PyExprMutator):
     def visit_function_(self, f):
         if f.attrs is None or "Composite" not in f.attrs:
             body = super().visit_expr(f.body)
-            new_f = Function(f.params, body, f.ret_struct_info, f.is_pure, f.attrs, f.span)
+            new_f = Function(
+                f.params, body, f.ret_struct_info, f.is_pure, f.attrs, f.span
+            )
 
-            if f.attrs and "global_symbol" in f.attrs and "cutlass" in f.attrs["global_symbol"]:
+            if (
+                f.attrs
+                and "global_symbol" in f.attrs
+                and "cutlass" in f.attrs["global_symbol"]
+            ):
                 composite_func = body.blocks[0].bindings[0].value
                 if "WorkspaceSize" in composite_func.attrs:
-                    return new_f.with_attr("WorkspaceSize", composite_func.attrs["WorkspaceSize"])
+                    return new_f.with_attr(
+                        "WorkspaceSize", composite_func.attrs["WorkspaceSize"]
+                    )
 
             return new_f
 
