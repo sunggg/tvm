@@ -33,11 +33,6 @@
 #include "../../../3rdparty/cutlass_fpA_intB_gemm/cutlass/include/cutlass/numeric_types.h"
 #include "../../../3rdparty/cutlass_fpA_intB_gemm/cutlass/include/cutlass/integer_subbyte.h"
 // clang-format on
-#include "../../../3rdparty/cutlass_fpA_intB_gemm/cutlass_kernels/moe_gemm/moe_gemm_kernels.h"
-
-void compute_total_rows_before_expert(const int* sorted_indices, const int total_indices,
-                                      const int num_experts, int64_t* total_rows_before_expert,
-                                      cudaStream_t stream);
 
 namespace fastertransformer {
 
