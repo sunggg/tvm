@@ -49,22 +49,22 @@ def test_flash_decoding_with_paged_kvcache():
     class Module:
         @R.function
         def main(
-            query: R.Tensor(("num_tokens", 8, 64), dtype="float16"),
-            key_cache: R.Tensor(("num_blocks", 256, 8, 64), dtype="float16"),
-            value_cache: R.Tensor(("num_blocks", 256, 8, 64), dtype="float16"),
+            query: R.Tensor(("num_tokens", 40, 128), dtype="float16"),
+            key_cache: R.Tensor(("num_blocks", 256, 40, 128), dtype="float16"),
+            value_cache: R.Tensor(("num_blocks", 256, 40, 128), dtype="float16"),
             block_tables: R.Tensor(("num_seqs", "max_num_blocks_per_seq"), dtype="int32"),
             context_lens: R.Tensor(("num_seqs",), dtype="int32"),
-        ) -> R.Tensor(("num_tokens", 8, 64), dtype="float16"):
+        ) -> R.Tensor(("num_tokens", 40, 128), dtype="float16"):
             with R.dataflow():
                 num_seqs = T.int64()
                 num_tokens = T.int64()
                 seqlen_q = T.floordiv(num_tokens, num_seqs)
 
-                query_reshaped = R.reshape(query, [num_seqs, -1, 8, 64])
+                query_reshaped = R.reshape(query, [num_seqs, -1, 40, 128])
 
                 # alloc workspace
-                softmax_lse_accum = R.zeros((128, num_seqs, 8, seqlen_q), "float32")
-                output_accum = R.zeros((128, num_seqs, 8, seqlen_q, 64), "float32")
+                softmax_lse_accum = R.zeros((128, num_seqs, 40, seqlen_q), "float32")
+                output_accum = R.zeros((128, num_seqs, 40, seqlen_q, 128), "float32")
 
                 out = R.call_dps_packed(
                     "tvm.contrib.flash_attn.flash_decoding_with_paged_kvcache",
@@ -80,18 +80,18 @@ def test_flash_decoding_with_paged_kvcache():
                     out_sinfo=query_reshaped.struct_info,
                 )
 
-                out2 = R.reshape(out, [num_tokens, 8, 64])
+                out2 = R.reshape(out, [num_tokens, 40, 128])
 
                 R.output(out2)
 
             return out2
 
     np.random.seed(0)
-    num_heads = 8
-    head_dim = 64
+    num_heads = 40
+    head_dim = 128
     block_size = 256
     num_seqs = 2
-    num_blocks = 2
+    num_blocks = 210
 
     target = "cuda"
 
@@ -107,14 +107,14 @@ def test_flash_decoding_with_paged_kvcache():
 
     for seqlen_q in [1, 5]:
         query = np.random.randn(num_seqs * seqlen_q, num_heads, head_dim).astype("float16")
-        block_tables = np.array([[0], [1]]).astype("int32")
-        context_lens = np.array([10, 9]).astype("int32")
-
-        inputs_np = [query, key_cache, value_cache, block_tables, context_lens]
+        block_tables = np.array([[208], [209]]).astype("int32")
+        context_lens = np.array([69, 129]).astype("int32")
 
         dev = tvm.device(target, 0)
         vm = relax.VirtualMachine(ex, dev)
         f = vm["main"]
+
+        inputs_np = [query, key_cache, value_cache, block_tables, context_lens]
         inputs = [tvm.nd.array(inp, dev) for inp in inputs_np]
 
         out = f(*inputs).numpy()
@@ -139,7 +139,7 @@ def test_flash_decoding_with_paged_kvcache():
 
             ref = np.reshape(ref, [num_seqs * seqlen_q, num_heads, head_dim])
 
-        assert np.max(np.abs(ref - out)) == 0.0
+            assert np.max(np.abs(ref - out)) == 0.0
 
 
 def test_reconstruct_from_cache():
