@@ -154,7 +154,7 @@ TVM_REGISTER_GLOBAL("tvm.contrib.flash_attn.flash_decoding_with_paged_kvcache")
       int max_num_blocks_per_seq = block_tables->shape[1];
       float softmax_scale = 1.0 / sqrt(static_cast<float>(head_dim));
 
-      ICHECK(block_size % 256 == 0) << "Block size needs to be a multiple of 256.";
+      ICHECK(block_size % 128 == 0) << "Block size needs to be a multiple of 128.";
 
       auto block_table_ptr = static_cast<int*>(block_tables->data);
       auto seqlens_k_ptr = static_cast<int*>(context_lens->data);
