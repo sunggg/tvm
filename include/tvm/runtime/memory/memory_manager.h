@@ -94,7 +94,7 @@ class Allocator {
   /*! \brief The amount of memory currently allocated.
    *  \return The amount of memory currently allocated.
    */
-  virtual size_t UsedMemory() = 0;
+  virtual size_t UsedMemory() const = 0;
 
  protected:
   virtual Buffer Alloc(Device dev, ShapeTuple shape, DLDataType type_hint,
@@ -126,8 +126,20 @@ class MemoryManager {
 
   static size_t UsedMemory(Device dev);
 
+  static void StartProfiling();
+  static void StopProfiling();
+
  private:
   MemoryManager() {}
+
+  void ForEachAllocator(std::function<void(Allocator*, AllocatorType, Device)> func) {
+    std::lock_guard<std::mutex> lock(mu_);
+    for (const auto& [device, allocators] : allocators_) {
+      for (const auto& [allocator_type, allocator] : allocators) {
+        func(allocator.get(), allocator_type, device);
+      }
+    }
+  }
 
  protected:
   std::mutex mu_;

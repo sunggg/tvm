@@ -169,12 +169,26 @@ Allocator* MemoryManager::GetAllocator(Device dev, AllocatorType type) {
 
 void MemoryManager::Clear() {
   MemoryManager* m = MemoryManager::Global();
-  std::lock_guard<std::mutex> lock(m->mu_);
-  for (const auto& [device, allocators] : m->allocators_) {
-    for (const auto& [allocator_type, allocator] : allocators) {
-      allocator->Clear();
+  m->ForEachAllocator(
+      [](Allocator* allocator, AllocatorType alloc_type, Device dev) { allocator->Clear(); });
+}
+
+void MemoryManager::StartProfiling() {
+  MemoryManager* m = MemoryManager::Global();
+  m->ForEachAllocator([](Allocator* allocator, AllocatorType alloc_type, Device dev) {
+    if (auto* pooled_alloc = static_cast<PooledAllocator*>(allocator)) {
+      pooled_alloc->StartProfiling();
     }
-  }
+  });
+}
+
+void MemoryManager::StopProfiling() {
+  MemoryManager* m = MemoryManager::Global();
+  m->ForEachAllocator([](Allocator* allocator, AllocatorType alloc_type, Device dev) {
+    if (auto* pooled_alloc = static_cast<PooledAllocator*>(allocator)) {
+      pooled_alloc->StopProfiling();
+    }
+  });
 }
 
 size_t MemoryManager::UsedMemory(Device dev) {
@@ -232,6 +246,14 @@ TVM_REGISTER_GLOBAL("vm.builtin.memory_manager.clear").set_body_typed(MemoryMana
 
 TVM_REGISTER_GLOBAL("vm.memory_manager.get_used_memory").set_body_typed([](Device dev) {
   return static_cast<int64_t>(MemoryManager::UsedMemory(dev));
+});
+
+TVM_REGISTER_GLOBAL("vm.memory_manager.start_profiling").set_body_typed([]() {
+  MemoryManager::StartProfiling();
+});
+
+TVM_REGISTER_GLOBAL("vm.memory_manager.stop_profiling").set_body_typed([]() {
+  MemoryManager::StopProfiling();
 });
 
 }  // namespace memory
