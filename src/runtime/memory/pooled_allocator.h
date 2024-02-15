@@ -111,10 +111,16 @@ class PooledAllocator final : public Allocator {
 
   void Clear() override { ReleaseAll(); }
 
-  size_t UsedMemory() override {
-    // HACK to disable eager recycling during memory profiling
-    recycle_eager = true;
+  size_t UsedMemory() const override {
     return used_memory_.load(std::memory_order_relaxed);
+  }
+
+  void StartProfiling() {
+    recycle_eager = false;
+  }
+
+  void StopProfiling() {
+    recycle_eager = true;
   }
 
  private:

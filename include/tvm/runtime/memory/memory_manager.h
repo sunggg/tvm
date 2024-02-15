@@ -94,7 +94,7 @@ class Allocator {
   /*! \brief The amount of memory currently allocated.
    *  \return The amount of memory currently allocated.
    */
-  virtual size_t UsedMemory() = 0;
+  virtual size_t UsedMemory() const = 0;
 
  protected:
   virtual Buffer Alloc(Device dev, ShapeTuple shape, DLDataType type_hint,
@@ -125,6 +125,9 @@ class MemoryManager {
   static void Clear();
 
   static size_t UsedMemory(Device dev);
+
+  static void StartProfiling();
+  static void StopProfiling();
 
  private:
   MemoryManager() {}
