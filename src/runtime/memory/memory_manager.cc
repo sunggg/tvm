@@ -169,37 +169,26 @@ Allocator* MemoryManager::GetAllocator(Device dev, AllocatorType type) {
 
 void MemoryManager::Clear() {
   MemoryManager* m = MemoryManager::Global();
-  std::lock_guard<std::mutex> lock(m->mu_);
-  for (const auto& [device, allocators] : m->allocators_) {
-    for (const auto& [allocator_type, allocator] : allocators) {
-      allocator->Clear();
-    }
-  }
+  m->ForEachAllocator(
+      [](Allocator* allocator, AllocatorType alloc_type, Device dev) { allocator->Clear(); });
 }
-
 
 void MemoryManager::StartProfiling() {
   MemoryManager* m = MemoryManager::Global();
-  std::lock_guard<std::mutex> lock(m->mu_);
-  for (const auto& [device, allocators] : m->allocators_) {
-    for (const auto& [allocator_type, allocator] : allocators) {
-      if (auto* pooled_alloc = static_cast<PooledAllocator*>(allocator.get())) {
-	pooled_alloc->StartProfiling();
-      }
+  m->ForEachAllocator([](Allocator* allocator, AllocatorType alloc_type, Device dev) {
+    if (auto* pooled_alloc = static_cast<PooledAllocator*>(allocator)) {
+      pooled_alloc->StartProfiling();
     }
-  }
+  });
 }
 
 void MemoryManager::StopProfiling() {
   MemoryManager* m = MemoryManager::Global();
-  std::lock_guard<std::mutex> lock(m->mu_);
-  for (const auto& [device, allocators] : m->allocators_) {
-    for (const auto& [allocator_type, allocator] : allocators) {
-      if (auto* pooled_alloc = static_cast<PooledAllocator*>(allocator.get())) {
-	pooled_alloc->StopProfiling();
-      }
+  m->ForEachAllocator([](Allocator* allocator, AllocatorType alloc_type, Device dev) {
+    if (auto* pooled_alloc = static_cast<PooledAllocator*>(allocator)) {
+      pooled_alloc->StopProfiling();
     }
-  }
+  });
 }
 
 size_t MemoryManager::UsedMemory(Device dev) {

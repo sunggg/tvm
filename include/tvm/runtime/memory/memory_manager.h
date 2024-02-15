@@ -132,6 +132,15 @@ class MemoryManager {
  private:
   MemoryManager() {}
 
+  void ForEachAllocator(std::function<void(Allocator*, AllocatorType, Device)> func) {
+    std::lock_guard<std::mutex> lock(mu_);
+    for (const auto& [device, allocators] : allocators_) {
+      for (const auto& [allocator_type, allocator] : allocators) {
+        func(allocator.get(), allocator_type, device);
+      }
+    }
+  }
+
  protected:
   std::mutex mu_;
   std::unordered_map<Device, std::unordered_map<AllocatorType, std::unique_ptr<Allocator>>>
