@@ -442,3 +442,5 @@ set(USE_UMA OFF)
 
 # Set custom Alloc Alignment for device allocated memory ndarray points to
 set(USE_KALLOC_ALIGNMENT 64)
+
+set(USE_CUDA_FP8 OFF)
