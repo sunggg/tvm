@@ -2236,7 +2236,10 @@ llvm::DIType* CodeGenLLVM::GetDebugType(const Type& ty_tir, llvm::Type* ty_llvm)
     llvm::dwarf::TypeKind dwarf_type;
     if (dtype.is_bool()) {
       dwarf_type = llvm::dwarf::DW_ATE_boolean;
-    } else if (dtype.is_float() || dtype.is_float8()) {
+    }
+    // TODO(@sung,eric): upstream only checks `dtype.is_float()`.
+    // Keep the internal version for now to be safe.
+    else if (dtype.is_float() || dtype.is_float8()) {
       dwarf_type = llvm::dwarf::DW_ATE_float;
     } else if (dtype.is_int()) {
       dwarf_type = llvm::dwarf::DW_ATE_signed;

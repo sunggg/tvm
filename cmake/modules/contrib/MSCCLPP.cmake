@@ -23,7 +23,6 @@ if(USE_CUDA AND USE_NCCL)
     GIT_TAG feature/2024-03-19/msccl-nccl-equivalents
   )
   set(USE_CUDA ON)
-  set(BYPASS_GPU_CHECK ON)
   set(BYPASS_PEERMEM_CHECK ON)
   set(BUILD_PYTHON_BINDINGS OFF)
   set(BUILD_TESTS OFF)

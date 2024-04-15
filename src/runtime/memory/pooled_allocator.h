@@ -111,16 +111,20 @@ class PooledAllocator : public Allocator {
 
   void Clear() override { ReleaseAll(); }
 
-  size_t UsedMemory() const override {
-    return used_memory_.load(std::memory_order_relaxed);
+  size_t UsedMemory() const override { return used_memory_.load(std::memory_order_relaxed); }
+
+  void StartProfiling() { recycle_eager = false; }
+
+  void StopProfiling() { recycle_eager = true; }
+
+ protected:
+  virtual void* DeviceAllocDataSpace(Device dev, size_t nbytes, size_t alignment,
+                                     DLDataType type_hint) {
+    return DeviceAPI::Get(dev)->AllocDataSpace(dev, nbytes, alignment, type_hint);
   }
 
-  void StartProfiling() {
-    recycle_eager = false;
-  }
-
-  void StopProfiling() {
-    recycle_eager = true;
+  virtual void DeviceFreeDataSpace(Device dev, void* ptr) {
+    DeviceAPI::Get(dev)->FreeDataSpace(dev, ptr);
   }
 
  protected:
